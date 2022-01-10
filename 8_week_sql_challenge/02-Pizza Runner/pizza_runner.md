@@ -448,12 +448,171 @@ ORDER BY
 
 ## Runner and Customer Experience
 How many runners signed up for each 1 week period? (i.e. week starts 2021-01-01)
+```sql
+SELECT
+  (
+    DATE_TRUNC('WEEK', registration_date - INTERVAL '4 DAY') + INTERVAL '4 DAY'
+  ) :: DATE AS signup_week,
+  COUNT(*)
+FROM
+  pizza_runner.runners
+GROUP BY
+  signup_week
+ORDER BY
+  signup_week;
+```
+|signup_week             |count|
+|------------------------|-----|
+|2021-01-01T00:00:00.000Z|2    |
+|2021-01-08T00:00:00.000Z|1    |
+|2021-01-15T00:00:00.000Z|1    |
+
 What was the average time in minutes it took for each runner to arrive at the Pizza Runner HQ to pickup the order?
+```sql
+SELECT
+  ro.runner_id AS runner_id,
+  ROUND(
+    AVG(
+      EXTRACT(
+        "MIN"
+        FROM
+          (ro.pickup_time - co.order_time)
+      )
+    )
+  ) AS avg_pickup_time_diff
+FROM
+  customer_orders_clean AS co
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+GROUP BY
+  runner_id
+ORDER BY
+  runner_id;
+```
+|runner_id|avg_pickup_time_diff|
+|---------|--------------------|
+|1        |15                  |
+|2        |23                  |
+|3        |10                  |
+
 Is there any relationship between the number of pizzas and how long the order takes to prepare?
+```sql
+WITH orders_summarized AS(
+    SELECT
+      co.order_id,
+      AVG(
+        EXTRACT(
+          "MIN"
+          FROM
+            (ro.pickup_time - co.order_time)
+        )
+      ) AS time_to_prepare,
+      COUNT(*) as num_pizzas
+    FROM
+      customer_orders_clean AS co
+      JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+    WHERE
+      ro.cancellation IS NULL
+    GROUP BY
+      co.order_id
+  )
+SELECT
+  ROUND(
+    CORR(time_to_prepare, num_pizzas)::NUMERIC, 
+    2) AS corr_num_pizzas_time_to_prepare
+FROM
+  orders_summarized;
+```
+- correlation = 0.84
+
 What was the average distance travelled for each customer?
+```sql
+SELECT
+  co.customer_id AS customer,
+  ROUND(
+    AVG(
+      ro.distance_km
+    )
+  ) AS avg_km_travelled
+FROM
+  customer_orders_clean AS co
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+GROUP BY
+  customer
+ORDER BY
+  customer;
+```
+|customer|avg_km_travelled|
+|--------|----------------|
+|101     |20              |
+|102     |17              |
+|103     |23              |
+|104     |10              |
+|105     |25              |
+
+
 What was the difference between the longest and shortest delivery times for all orders?
+```sql
+SELECT
+  MAX(duration_min) AS max_delivery_time,
+  MIN(duration_min) AS min_delivery_time,
+  MAX(duration_min) - MIN(duration_min) AS diff_max_min_delivery_time
+FROM
+  runner_orders_clean
+WHERE
+  cancellation IS NULL;
+```
+- 30min
+
 What was the average speed for each runner for each delivery and do you notice any trend for these values?
+```sql
+SELECT
+  runner_id,
+  ROUND(
+    AVG(distance_km :: NUMERIC /(duration_min :: NUMERIC / 60)),
+    2
+  ) AS avg_kmh_speed
+FROM
+  runner_orders_clean
+GROUP BY
+  runner_id
+ORDER BY
+  runner_id;
+```
+|runner_id|avg_kmh_speed|
+|---------|-------------|
+|1        |45.54        |
+|2        |62.90        |
+|3        |40.00        |
+
 What is the successful delivery percentage for each runner?
+```sql
+WITH delivery_success AS(
+    SELECT
+      runner_id,
+      CASE
+        WHEN cancellation IS NULL THEN 1
+        ELSE 0
+      END AS delivery_success
+    FROM
+      runner_orders_clean
+  )
+SELECT
+  runner_id,
+  COUNT(*) AS total_orders,
+  SUM(delivery_success) AS successful_delivery,
+  ROUND(SUM(delivery_success :: NUMERIC) / COUNT(*), 2) AS perc_successful_deliveries
+FROM
+  delivery_success
+GROUP BY
+  runner_id
+ORDER BY
+  runner_id;
+```
+|runner_id|total_orders|successful_delivery|perc_successful_deliveries|
+|---------|------------|-------------------|--------------------------|
+|1        |4           |4                  |1.00                      |
+|2        |4           |3                  |0.75                      |
+|3        |2           |1                  |0.50                      |
 
 ## Ingredient Optimisation
 

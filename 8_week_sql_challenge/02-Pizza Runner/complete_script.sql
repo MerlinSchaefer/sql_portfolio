@@ -209,3 +209,158 @@ GROUP BY
   pizza_changes
 ORDER BY
   customer_id;
+
+-- question  8
+SELECT
+  COUNT(*)
+FROM
+  customer_orders_clean
+WHERE
+  extras IS NOT NULL
+  AND exclusions IS NOT NULL;
+
+-- question 9
+
+SELECT
+  EXTRACT(
+    'HOUR'
+    FROM
+      order_time
+  ) AS hour_of_day,
+  COUNT(*) AS num_pizzas
+FROM
+  customer_orders_clean
+GROUP BY
+  hour_of_day
+ORDER BY
+  hour_of_day;
+
+-- question 10
+
+SELECT
+  TO_CHAR(order_time, 'Dy') AS day_of_week,
+  COUNT(*) AS num_pizzas
+FROM
+  customer_orders_clean
+GROUP BY
+  day_of_week
+ORDER BY
+  day_of_week;
+
+-- runner and customer exp
+
+SELECT
+  (
+    DATE_TRUNC('WEEK', registration_date - INTERVAL '4 DAY') + INTERVAL '4 DAY'
+  ) :: DATE AS signup_week,
+  COUNT(*)
+FROM
+  pizza_runner.runners
+GROUP BY
+  signup_week
+ORDER BY
+  signup_week;
+
+SELECT
+  ro.runner_id AS runner_id,
+  ROUND(
+    AVG(
+      EXTRACT(
+        "MIN"
+        FROM
+          (ro.pickup_time - co.order_time)
+      )
+    )
+  ) AS avg_pickup_time_diff
+FROM
+  customer_orders_clean AS co
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+GROUP BY
+  runner_id
+ORDER BY
+  runner_id;
+
+WITH orders_summarized AS(
+    SELECT
+      co.order_id,
+      AVG(
+        EXTRACT(
+          "MIN"
+          FROM
+            (ro.pickup_time - co.order_time)
+        )
+      ) AS time_to_prepare,
+      COUNT(*) as num_pizzas
+    FROM
+      customer_orders_clean AS co
+      JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+    WHERE
+      ro.cancellation IS NULL
+    GROUP BY
+      co.order_id
+  )
+SELECT
+  ROUND(
+    CORR(time_to_prepare, num_pizzas)::NUMERIC, 
+    2) AS corr_num_pizzas_time_to_prepare
+FROM
+  orders_summarized;
+
+SELECT
+  co.customer_id AS customer,
+  ROUND(
+    AVG(
+      ro.distance_km
+    )
+  ) AS avg_km_travelled
+FROM
+  customer_orders_clean AS co
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+GROUP BY
+  customer
+ORDER BY
+  customer;
+
+SELECT
+  MAX(duration_min) AS max_delivery_time,
+  MIN(duration_min) AS min_delivery_time,
+  MAX(duration_min) - MIN(duration_min) AS diff_max_min_delivery_time
+FROM
+  runner_orders_clean
+WHERE
+  cancellation IS NULL;
+
+SELECT
+  runner_id,
+  ROUND(
+    AVG(distance_km :: NUMERIC /(duration_min :: NUMERIC / 60)),
+    2
+  ) AS avg_kmh_speed
+FROM
+  runner_orders_clean
+GROUP BY
+  runner_id
+ORDER BY
+  runner_id;
+
+WITH delivery_success AS(
+    SELECT
+      runner_id,
+      CASE
+        WHEN cancellation IS NULL THEN 1
+        ELSE 0
+      END AS delivery_success
+    FROM
+      runner_orders_clean
+  )
+SELECT
+  runner_id,
+  COUNT(*) AS total_orders,
+  SUM(delivery_success) AS successful_delivery,
+  ROUND(SUM(delivery_success :: NUMERIC) / COUNT(*), 2) AS perc_successful_deliveries
+FROM
+  delivery_success
+GROUP BY
+  runner_id
+ORDER BY
+  runner_id;
