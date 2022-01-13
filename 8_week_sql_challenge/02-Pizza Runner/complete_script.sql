@@ -364,3 +364,177 @@ GROUP BY
   runner_id
 ORDER BY
   runner_id;
+
+-- ingredients
+
+WITH cte_split_pizza_names AS(
+    SELECT
+      pizza_id,
+      REGEXP_SPLIT_TO_TABLE(toppings, '[,\s] +') :: INTEGER AS topping_id
+    FROM
+      pizza_runner.pizza_recipes
+  )
+SELECT
+  pizza_name,
+  STRING_AGG(topping_name, ', ') AS toppings
+FROM
+  cte_split_pizza_names AS cspn
+  JOIN pizza_runner.pizza_toppings AS pt ON cspn.topping_id = pt.topping_id
+  JOIN pizza_runner.pizza_names AS pn ON cspn.pizza_id = pn.pizza_id
+GROUP BY
+  pizza_name;
+
+  SELECT
+  order_id,
+  REGEXP_SPLIT_TO_TABLE(extras, '[,\s] +') :: INTEGER AS extras_id
+FROM
+  customer_orders_clean)
+SELECT
+topping_name,
+COUNT(*) AS num_ordered_extra
+FROM cte_split_extras AS cse
+JOIN pizza_runner.pizza_toppings AS pt ON cse.extras_id = pt.topping_id
+GROUP BY topping_name
+ORDER BY num_ordered_extra DESC
+LIMIT 1;
+
+WITH cte_split_exclusions AS(
+SELECT
+  order_id,
+  REGEXP_SPLIT_TO_TABLE(exclusions, '[,\s] +') :: INTEGER AS exclusions_id
+FROM
+  customer_orders_clean)
+SELECT
+topping_name,
+COUNT(*) AS num_ordered_exclusion
+FROM cte_split_exclusions AS cse
+JOIN pizza_runner.pizza_toppings AS pt ON cse.exclusions_id = pt.topping_id
+GROUP BY topping_name
+ORDER BY num_ordered_exclusion DESC
+LIMIT 1;
+
+
+
+-- pricing and ratings
+
+DROP TABLE IF EXISTS pizza_names_prices;
+CREATE TEMP TABLE pizza_names_prices AS
+SELECT
+pizza_id,
+pizza_name,
+CASE pizza_name
+WHEN 'Meatlovers' THEN 12
+ELSE 10
+END AS price
+FROM pizza_runner.pizza_names;
+
+SELECT
+  SUM(pnp.price) AS total_profit_$
+FROM
+  customer_orders_clean AS co
+  JOIN pizza_names_prices AS pnp ON co.pizza_id = pnp.pizza_id
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+WHERE
+  ro.cancellation IS NULL;
+
+
+WITH cte_add_charge AS(
+    SELECT
+      pnp.price,
+      CASE
+        WHEN extras IS NULL THEN 0
+        ELSE 1
+      END AS extras_price
+    FROM
+      customer_orders_clean AS co
+      JOIN pizza_names_prices AS pnp ON co.pizza_id = pnp.pizza_id
+      JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+    WHERE
+      ro.cancellation IS NULL
+  )
+SELECT
+  SUM(price + extras_price) AS total_profit_$
+FROM
+  cte_add_charge;
+
+WITH cte_add_charge AS(
+    SELECT
+      pnp.price,
+      CASE
+        WHEN extras LIKE '%4%' THEN 1
+        ELSE 0
+      END AS extras_price
+    FROM
+      customer_orders_clean AS co
+      JOIN pizza_names_prices AS pnp ON co.pizza_id = pnp.pizza_id
+      JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+    WHERE
+      ro.cancellation IS NULL
+  )
+SELECT
+  SUM(price + extras_price)
+FROM
+  cte_add_charge;
+
+
+SELECT SETSEED(1);
+
+DROP TABLE IF EXISTS pizza_runner.ratings;
+CREATE TABLE pizza_runner.ratings (
+  "order_id" INTEGER,
+  "rating" INTEGER
+);
+
+INSERT INTO pizza_runner.ratings
+SELECT
+  order_id,
+  FLOOR(1 + 5 * RANDOM()) AS rating
+FROM runner_orders_clean
+WHERE cancellation IS NULL;
+SELECT * FROM pizza_runner.ratings;
+
+DROP TABLE IF EXISTS successful_deliveries;
+CREATE TEMP TABLE successful_deliveries AS
+SELECT
+  co.customer_id,
+  co.order_id,
+  ro.runner_id,
+  r.rating,
+  co.order_time,
+  ro.pickup_time,
+  AVG(
+    EXTRACT(
+      "MIN"
+      FROM
+        (ro.pickup_time - co.order_time)
+    )
+  ) OVER by_order AS time_to_prepare,
+  ROUND(
+    AVG(
+      ro.distance_km :: NUMERIC / (ro.duration_min :: NUMERIC / 60)
+    ) OVER by_order,
+    2
+  ) AS avg_kmh_speed,
+  COUNT(co.pizza_id) OVER by_order AS total_num_pizzas
+FROM
+  customer_orders_clean AS co
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+  JOIN pizza_runner.ratings AS r ON co.order_id = r.order_id
+WHERE
+  ro.cancellation IS NULL WINDOW by_order AS (PARTITION BY co.order_id);
+
+  WITH prices_travel_cost AS(
+    SELECT
+      pnp.price,
+      0.3 * ro.distance_km AS travel_cost
+    FROM
+      runner_orders_clean AS ro
+      JOIN customer_orders_clean AS co ON ro.order_id = co.order_id
+      JOIN pizza_names_prices AS pnp ON pnp.pizza_id = co.pizza_id
+    WHERE
+      ro.cancellation IS NULL
+  )
+SELECT
+  SUM(price - travel_cost) AS total_profit
+FROM
+  prices_travel_cost;

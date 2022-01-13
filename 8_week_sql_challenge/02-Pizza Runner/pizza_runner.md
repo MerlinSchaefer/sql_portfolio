@@ -617,22 +617,173 @@ ORDER BY
 ## Ingredient Optimisation
 
 What are the standard ingredients for each pizza?
+```sql
+WITH cte_split_pizza_names AS(
+    SELECT
+      pizza_id,
+      REGEXP_SPLIT_TO_TABLE(toppings, '[,\s] +') :: INTEGER AS topping_id
+    FROM
+      pizza_runner.pizza_recipes
+  )
+SELECT
+  pizza_name,
+  STRING_AGG(topping_name, ', ') AS toppings
+FROM
+  cte_split_pizza_names AS cspn
+  JOIN pizza_runner.pizza_toppings AS pt ON cspn.topping_id = pt.topping_id
+  JOIN pizza_runner.pizza_names AS pn ON cspn.pizza_id = pn.pizza_id
+GROUP BY
+  pizza_name;
+```
+|pizza_name|toppings                                                             |
+|----------|---------------------------------------------------------------------|
+|Meatlovers|Bacon, BBQ Sauce, Beef, Cheese, Chicken, Mushrooms, Pepperoni, Salami|
+|Vegetarian|Cheese, Mushrooms, Onions, Peppers, Tomatoes, Tomato Sauce           |
+
+
 What was the most commonly added extra?
+
+```sql
+SELECT
+  order_id,
+  REGEXP_SPLIT_TO_TABLE(extras, '[,\s] +') :: INTEGER AS extras_id
+FROM
+  customer_orders_clean)
+SELECT
+topping_name,
+COUNT(*) AS num_ordered_extra
+FROM cte_split_extras AS cse
+JOIN pizza_runner.pizza_toppings AS pt ON cse.extras_id = pt.topping_id
+GROUP BY topping_name
+ORDER BY num_ordered_extra DESC
+LIMIT 1;
+```
+|topping_name|num_ordered_extra  |
+|------------|-------------------|
+|Bacon       |4                  |
+
+
+
 What was the most common exclusion?
-Generate an order item for each record in the customers_orders table in the format of one of the following:
-Meat Lovers
-Meat Lovers - Exclude Beef
-Meat Lovers - Extra Bacon
-Meat Lovers - Exclude Cheese, Bacon - Extra Mushroom, Peppers
-Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
-For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
-What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
+```sql
+WITH cte_split_exclusions AS(
+SELECT
+  order_id,
+  REGEXP_SPLIT_TO_TABLE(exclusions, '[,\s] +') :: INTEGER AS exclusions_id
+FROM
+  customer_orders_clean)
+SELECT
+topping_name,
+COUNT(*) AS num_ordered_exclusion
+FROM cte_split_exclusions AS cse
+JOIN pizza_runner.pizza_toppings AS pt ON cse.exclusions_id = pt.topping_id
+GROUP BY topping_name
+ORDER BY num_ordered_exclusion DESC
+LIMIT 1;
+```
+
+|topping_name|num_ordered_exclusion|
+|------------|---------------------|
+|Cheese      |4                    |
+
 
 ## Pricing and Ratings
+ 
+
+ #### Add prices to pizza_names table for coming queries
+```sql
+DROP TABLE IF EXISTS pizza_names_prices;
+CREATE TEMP TABLE pizza_names_prices AS
+SELECT
+pizza_id,
+pizza_name,
+CASE pizza_name
+WHEN 'Meatlovers' THEN 12
+ELSE 10
+END AS price
+FROM pizza_runner.pizza_names;
+```
 If a Meat Lovers pizza costs $12 and Vegetarian costs $10 and there were no charges for changes - how much money has Pizza Runner made so far if there are no delivery fees?
+
+```sql
+SELECT
+  SUM(pnp.price) AS total_profit_$
+FROM
+  customer_orders_clean AS co
+  JOIN pizza_names_prices AS pnp ON co.pizza_id = pnp.pizza_id
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+WHERE
+  ro.cancellation IS NULL;
+```
+- 138 $ 
+
 What if there was an additional $1 charge for any pizza extras?
+
+```sql
+WITH cte_add_charge AS(
+    SELECT
+      pnp.price,
+      CASE
+        WHEN extras IS NULL THEN 0
+        ELSE 1
+      END AS extras_price
+    FROM
+      customer_orders_clean AS co
+      JOIN pizza_names_prices AS pnp ON co.pizza_id = pnp.pizza_id
+      JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+    WHERE
+      ro.cancellation IS NULL
+  )
+SELECT
+  SUM(price + extras_price) AS total_profit_$
+FROM
+  cte_add_charge;
+```
+- 141 $
+
 Add cheese is $1 extra
+```sql
+WITH cte_add_charge AS(
+    SELECT
+      pnp.price,
+      CASE
+        WHEN extras LIKE '%4%' THEN 1
+        ELSE 0
+      END AS extras_price
+    FROM
+      customer_orders_clean AS co
+      JOIN pizza_names_prices AS pnp ON co.pizza_id = pnp.pizza_id
+      JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+    WHERE
+      ro.cancellation IS NULL
+  )
+SELECT
+  SUM(price + extras_price)
+FROM
+  cte_add_charge;
+```
+- 139 $
+
 The Pizza Runner team now wants to add an additional ratings system that allows customers to rate their runner, how would you design an additional table for this new dataset - generate a schema for this new table and insert your own data for ratings for each successful customer order between 1 to 5.
+
+```sql
+SELECT SETSEED(1);
+
+DROP TABLE IF EXISTS pizza_runner.ratings;
+CREATE TABLE pizza_runner.ratings (
+  "order_id" INTEGER,
+  "rating" INTEGER
+);
+
+INSERT INTO pizza_runner.ratings
+SELECT
+  order_id,
+  FLOOR(1 + 5 * RANDOM()) AS rating
+FROM runner_orders_clean
+WHERE cancellation IS NULL;
+SELECT * FROM pizza_runner.ratings;
+```
+
 Using your newly generated table - can you join all of the information together to form a table which has the following information for successful deliveries?
 customer_id
 order_id
@@ -644,358 +795,56 @@ Time between order and pickup
 Delivery duration
 Average speed
 Total number of pizzas
+
+```sql
+DROP TABLE IF EXISTS successful_deliveries;
+CREATE TEMP TABLE successful_deliveries AS
+SELECT
+  co.customer_id,
+  co.order_id,
+  ro.runner_id,
+  r.rating,
+  co.order_time,
+  ro.pickup_time,
+  AVG(
+    EXTRACT(
+      "MIN"
+      FROM
+        (ro.pickup_time - co.order_time)
+    )
+  ) OVER by_order AS time_to_prepare,
+  ROUND(
+    AVG(
+      ro.distance_km :: NUMERIC / (ro.duration_min :: NUMERIC / 60)
+    ) OVER by_order,
+    2
+  ) AS avg_kmh_speed,
+  COUNT(co.pizza_id) OVER by_order AS total_num_pizzas
+FROM
+  customer_orders_clean AS co
+  JOIN runner_orders_clean AS ro ON co.order_id = ro.order_id
+  JOIN pizza_runner.ratings AS r ON co.order_id = r.order_id
+WHERE
+  ro.cancellation IS NULL WINDOW by_order AS (PARTITION BY co.order_id);
+```
+
 If a Meat Lovers pizza was $12 and Vegetarian $10 fixed prices with no cost for extras and each runner is paid $0.30 per kilometre traveled - how much money does Pizza Runner have left over after these deliveries?
 
-## Bonus
-If Danny wants to expand his range of pizzas - how would this impact the existing data design? Write an INSERT statement to demonstrate what would happen if a new Supreme pizza with all the toppings was added to the Pizza Runner menu?
-
-1. What is the total amount each customer spent at the restaurant?
 ```sql
-SELECT
-  customer_id,
-  SUM(price) AS total_spent
-FROM
-  diner_data_complete
-GROUP BY
-  customer_id
-ORDER BY
-  customer_id;
-```
-
-|customer_id|total_spent|
-|-----------|---|
-|A          |76 |
-|B          |74 |
-|C          |36 |
-
-2. How many days has each customer visited the restaurant?
-```sql
-SELECT
-  customer_id,
-  COUNT(DISTINCT order_date) As num_days
-FROM
-  diner_data_complete
-GROUP BY
-  customer_id
-ORDER BY
-  customer_id;
-```
-|customer_id|num_days|
-|-----------|-----|
-|A          |4    |
-|B          |6    |
-|C          |2    |
-
-3. What was the first item from the menu purchased by each customer?
-```sql
-WITH ranked_orders AS(
+WITH prices_travel_cost AS(
     SELECT
-      customer_id,
-      product_name,
-      ROW_NUMBER() OVER(
-        PARTITION BY customer_id
-        ORDER BY
-          order_date
-      ) AS purchase_rank
+      pnp.price,
+      0.3 * ro.distance_km AS travel_cost
     FROM
-      diner_data_complete
-  )
-SELECT
-  customer_id,
-  product_name
-FROM
-  ranked_orders
-WHERE
-  purchase_rank = 1
-ORDER BY
-  customer_id;
-```
-|customer_id|product_name|
-|-----------|------------|
-|A          |curry       |
-|B          |curry       |
-|C          |ramen       |
-
-4. What is the most purchased item on the menu and how many times was it purchased by all customers?
-```sql
-SELECT
-  product_name,
-  COUNT(*) AS num_purchases
-FROM
-  diner_data_complete
-GROUP BY
-  product_name
-ORDER BY
-  num_purchases DESC
-LIMIT
-  1;
-```
-|product_name|num_purchases|
-|-----------|------------|
-|ramen      |8           |
-
-5. Which item was the most popular for each customer?
-```sql
-WITH ranked_purchases AS(
-    SELECT
-      customer_id,
-      product_name,
-      RANK() OVER(
-        PARTITION BY customer_id
-        ORDER BY
-          COUNT(*) DESC
-      ) AS rank_num_purchases
-    FROM
-      diner_data_complete
-    GROUP BY
-      customer_id,
-      product_name
-  )
-SELECT
-  customer_id,
-  product_name
-FROM
-  ranked_purchases
-WHERE
-  rank_num_purchases = 1;
-```
-|customer_id|product_name|
-|-----------|------------|
-|A          |ramen       |
-|B          |sushi       |
-|B          |ramen       |
-|B          |curry       |
-|C          |ramen       |
-
-
-6. Which item was purchased first by the customer after they became a member?
-```sql
-WITH ranked_purchases AS (
-    SELECT
-      customer_id,
-      product_name,
-      RANK() OVER(
-        PARTITION BY customer_id
-        ORDER BY
-          order_date
-      ) AS order_rank
-    FROM
-      diner_data_complete
+      runner_orders_clean AS ro
+      JOIN customer_orders_clean AS co ON ro.order_id = co.order_id
+      JOIN pizza_names_prices AS pnp ON pnp.pizza_id = co.pizza_id
     WHERE
-      member = 'Y'
+      ro.cancellation IS NULL
   )
 SELECT
-  customer_id,
-  product_name
+  SUM(price - travel_cost) AS total_profit
 FROM
-  ranked_purchases
-WHERE
-  order_rank = 1;
+  prices_travel_cost;
 ```
-|customer_id|product_name|
-|-----------|------------|
-|A          |curry       |
-|B          |sushi       |
-
-7. Which item was purchased just before the customer became a member?
-- Note: there are shorter ways to solve this but these rely on info we only have because the table is so small, (e.g. C is never a member) this query should work universally if the data grows
-
-```sql
-WITH lag_orders AS(
-    SELECT
-      customer_id,
-      order_date,
-      product_name,
-      LAG(product_name) OVER customer_date AS previous_order,
-      member
-    FROM
-      diner_data_complete WINDOW customer_date AS (
-        PARTITION BY customer_id
-        ORDER BY
-          order_date
-      )
-  ),
-  ranked_lag_orders AS (
-    SELECT
-      customer_id,
-      previous_order,
-      RANK() OVER customer_date AS order_rank
-    FROM
-      lag_orders
-    WHERE
-      member = 'Y' WINDOW customer_date AS (
-        PARTITION BY customer_id
-        ORDER BY
-          order_date
-      )
-  )
-SELECT
-  customer_id,
-  previous_order AS last_nonmember_purchase
-FROM
-  ranked_lag_orders
-WHERE
-  order_rank = 1;
-```
-|customer_id|last_nonmember_purchase|
-|-----------|------------|
-|A          |sushi       |
-|B          |sushi       |
-
-
-
-8. What is the total items and amount spent for each member before they became a member?
-```sql
-SELECT
-  customer_id,
-  SUM(price) AS total_amount,
-  COUNT(*) AS total_items
-FROM
-  diner_data_complete
-WHERE
-  member = 'N'
-  AND join_date IS NOT NULL
-GROUP BY
-  customer_id;
-```
-|customer_id|total_amount|total_items|
-|-----------|---|-----|
-|A          |25 |2    |
-|B          |40 |3    |
-
-9. If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
-```sql
-WITH point_data AS (
-    SELECT
-      customer_id,
-      CASE
-        WHEN product_name = 'sushi' THEN price * 20
-        ELSE price * 10
-      END AS points
-    FROM
-      diner_data_complete
-  )
-SELECT
-  customer_id,
-  SUM(points) AS total_points
-FROM
-  point_data
-GROUP BY
-  customer_id
-ORDER BY
-  customer_id;
-```
-|customer_id|total_points|
-|-----------|------------|
-|A          |860         |
-|B          |940         |
-|C          |360         |
-
-
-10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
-
-```sql
-WITH point_data AS (
-SELECT
-  customer_id,
-  order_date,
-  join_date,
-  product_name,
-  CASE
-    WHEN product_name = 'sushi' THEN price * 20
-    WHEN join_date + INTERVAL '7 DAY' > order_date AND join_date <= order_date THEN price * 20
-    ELSE price * 10
-  END AS points
-FROM
-  diner_data_complete
-WHERE
-  join_date IS NOT NULL)
-SELECT
-customer_id,
-SUM(points) AS total_points
-FROM point_data
-WHERE EXTRACT('MONTH' FROM order_date) = 1
-GROUP BY customer_id
-ORDER BY customer_id;
-```
-|customer_id|total_points|
-|-----------|------------|
-|A          |1370        |
-|B          |820         |
-
-
-11. Recreate the following table output using the available data:
-
-| customer_id | order_date | product_name | price | member |
-|-------------|------------|--------------|-------|--------|
-| A           | 2021-01-01 | curry        | 15    | N      |
-| A           | 2021-01-01 | sushi        | 10    | N      |
-| A           | 2021-01-07 | curry        | 15    | Y      |
-| A           | 2021-01-10 | ramen        | 12    | Y      |
-| A           | 2021-01-11 | ramen        | 12    | Y      |
-| A           | 2021-01-11 | ramen        | 12    | Y      |
-| B           | 2021-01-01 | curry        | 15    | N      |
-| ...         | ...        | ...          | ...   | ...    |
-
-```sql
--- see beginning of case study for table creation (exclude join_date)
-SELECT 
-    customer_id,
-    order_date,
-    product_name,
-    price,
-    member
-FROM diner_data_complete;
-```
-
-|customer_id|order_date|product_name|price|member|
-|-----------|----------|------------|-----|------|
-|A          |2021-01-01T00:00:00.000Z|curry       |15   |N     |
-|A          |2021-01-01T00:00:00.000Z|sushi       |10   |N     |
-|A          |2021-01-07T00:00:00.000Z|curry       |15   |Y     |
-|A          |2021-01-10T00:00:00.000Z|ramen       |12   |Y     |
-|A          |2021-01-11T00:00:00.000Z|ramen       |12   |Y     |
-|A          |2021-01-11T00:00:00.000Z|ramen       |12   |Y     |
-|B          |2021-01-01T00:00:00.000Z|curry       |15   |N     |
-|B          |2021-01-02T00:00:00.000Z|curry       |15   |N     |
-|B          |2021-01-04T00:00:00.000Z|sushi       |10   |N     |
-|B          |2021-01-11T00:00:00.000Z|sushi       |10   |Y     |
-|B          |2021-01-16T00:00:00.000Z|ramen       |12   |Y     |
-|B          |2021-02-01T00:00:00.000Z|ramen       |12   |Y     |
-|C          |2021-01-01T00:00:00.000Z|ramen       |12   |N     |
-|C          |2021-01-01T00:00:00.000Z|ramen       |12   |N     |
-|C          |2021-01-07T00:00:00.000Z|ramen       |12   |N     |
-
-
-12. Danny also requires further information about the ranking of customer products, but he purposely does not need the ranking for non-member purchases so he expects null ranking values for the records when customers are not yet part of the loyalty program.
-
-```sql
-SELECT 
-    customer_id,
-    order_date,
-    product_name,
-    price,
-    member,
-    CASE
-    WHEN member = 'N' THEN NULL
-    ELSE RANK() OVER(PARTITION BY customer_id, member ORDER BY order_date) 
-    END AS ranking
-FROM diner_data_complete;
-```
-|customer_id|order_date|product_name|price|member|ranking|
-|-----------|----------|------------|-----|------|-------|
-|A          |2021-01-01|curry       |15   |N     |       |
-|A          |2021-01-01|sushi       |10   |N     |       |
-|A          |2021-01-07|curry       |15   |N     |       |
-|A          |2021-01-10|ramen       |12   |Y     |1      |
-|A          |2021-01-11|ramen       |12   |Y     |2      |
-|A          |2021-01-11|ramen       |12   |Y     |2      |
-|B          |2021-01-01|curry       |15   |N     |       |
-|B          |2021-01-02|curry       |15   |N     |       |
-|B          |2021-01-04|sushi       |10   |N     |       |
-|B          |2021-01-11|sushi       |10   |Y     |1      |
-|B          |2021-01-16|ramen       |12   |Y     |2      |
-|B          |2021-02-01|ramen       |12   |Y     |3      |
-|C          |2021-01-01|ramen       |12   |N     |       |
-|C          |2021-01-01|ramen       |12   |N     |       |
-|C          |2021-01-07|ramen       |12   |N     |       |
+- 73.38
