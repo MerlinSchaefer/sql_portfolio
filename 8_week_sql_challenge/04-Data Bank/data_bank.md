@@ -418,10 +418,226 @@ GROUP BY
 |2020-02-01|181  |
 
 What is the closing balance for each customer at the end of the month?
-Comparing the closing balance of a customer’s first month and the closing balance from their second nth, what percentage of customers:
+```sql
+--q9
+WITH cte_balances AS(
+    SELECT
+      customer_id,
+      DATE_TRUNC('MONTH', txn_date) AS txn_month,
+      SUM(
+        CASE
+          WHEN txn_type = 'deposit' THEN txn_amount
+          ELSE txn_amount * -1
+        END
+      ) AS end_of_month_balance
+    FROM
+      data_bank.customer_transactions
+    GROUP BY
+      customer_id,
+      txn_month
+    ORDER BY
+      customer_id,
+      txn_month
+  ),
+  cte_months AS(
+    SELECT
+      DISTINCT customer_id,
+      (
+        '2020-01-01' :: DATE + GENERATE_SERIES(0, 3) * INTERVAL '1 MONTH'
+      ) :: DATE AS txn_month
+    FROM
+      data_bank.customer_transactions
+  )
+SELECT
+  cte_months.customer_id,
+  cte_months.txn_month,
+  COALESCE(cte_balances.end_of_month_balance, 0) AS balance_contribution,
+  SUM(cte_balances.end_of_month_balance) OVER (
+    PARTITION BY cte_months.customer_id
+    ORDER BY
+      cte_months.txn_month 
+      ROWS BETWEEN UNBOUNDED PRECEDING
+      AND CURRENT ROW
+  ) AS ending_balance
+FROM
+  cte_months
+  LEFT JOIN cte_balances ON cte_months.customer_id = cte_balances.customer_id
+  AND cte_months.txn_month = cte_balances.txn_month
+ORDER BY
+  cte_months.customer_id;
+```
+|customer_id|txn_month|balance_contribution|ending_balance|
+|-----------|---------|--------------------|--------------|
+|1          |2020-01-01|312                 |312           |
+|1          |2020-02-01|0                   |312           |
+|1          |2020-03-01|-952                |-640          |
+|1          |2020-04-01|0                   |-640          |
+|2          |2020-01-01|549                 |549           |
+|2          |2020-02-01|0                   |549           |
+|2          |2020-03-01|61                  |610           |
+|2          |2020-04-01|0                   |610           |
+|3          |2020-01-01|144                 |144           |
+|3          |2020-02-01|-965                |-821          |
+|3          |2020-03-01|-401                |-1222         |
+|3          |2020-04-01|493                 |-729          |
+|4          |2020-01-01|848                 |848           |
+|4          |2020-02-01|0                   |848           |
+|4          |2020-03-01|-193                |655           |
+|4          |2020-04-01|0                   |655           |
+|5          |2020-01-01|954                 |954           |
+|5          |2020-02-01|0                   |954           |
+|5          |2020-03-01|-2877               |-1923         |
+|5          |2020-04-01|-490                |-2413         |
+|6          |2020-01-01|733                 |733           |
+|6          |2020-02-01|-785                |-52           |
+|6          |2020-03-01|392                 |340           |
+|6          |2020-04-01|0                   |340           |
+|7          |2020-01-01|964                 |964           |
+|7          |2020-02-01|2209                |3173          |
+|7          |2020-03-01|-640                |2533          |
+|7          |2020-04-01|90                  |2623          |
+|8          |2020-01-01|587                 |587           |
+|8          |2020-02-01|-180                |407           |
+|8          |2020-03-01|-464                |-57           |
+|8          |2020-04-01|-972                |-1029         |
+|9          |2020-01-01|849                 |849           |
+|9          |2020-02-01|-195                |654           |
+|9          |2020-03-01|930                 |1584          |
+|9          |2020-04-01|-722                |862           |
+|10         |2020-01-01|-1622               |-1622         |
+|10         |2020-02-01|280                 |-1342         |
+|10         |2020-03-01|-1411               |-2753         |
+|10         |2020-04-01|-2337               |-5090         |
+|...        |...                     | ...                |...           |
+
+Comparing the closing balance of a customer’s first month and the closing balance from their second month, what percentage of customers:
 Have a negative first month balance?
 Have a positive first month balance?
 Increase their opening month’s positive closing balance by more than 5% in the following month?
 Reduce their opening month’s positive closing balance by more than 5% in the following month?
 Move from a positive balance in the first month to a negative balance in the second month?
 
+```sql
+-- q10
+  WITH cte_balances AS(
+    SELECT
+      customer_id,
+      DATE_TRUNC('MONTH', txn_date) AS txn_month,
+      SUM(
+        CASE
+          WHEN txn_type = 'deposit' THEN txn_amount
+          ELSE txn_amount * -1
+        END
+      ) AS end_of_month_balance
+    FROM
+      data_bank.customer_transactions
+    GROUP BY
+      customer_id,
+      txn_month
+    ORDER BY
+      customer_id,
+      txn_month
+  ),
+  cte_months AS(
+    SELECT
+      DISTINCT customer_id,
+      (
+        '2020-01-01' :: DATE + GENERATE_SERIES(0, 3) * INTERVAL '1 MONTH'
+      ) :: DATE AS txn_month
+    FROM
+      data_bank.customer_transactions
+  ),
+  monthly_balances AS(
+    SELECT
+      cte_months.customer_id,
+      cte_months.txn_month,
+      ROW_NUMBER() OVER(
+        PARTITION BY cte_months.customer_id
+        ORDER BY
+          cte_months.txn_month
+      ) AS month_number,
+      SUM(cte_balances.end_of_month_balance) OVER (
+        PARTITION BY cte_months.customer_id
+        ORDER BY
+          cte_months.txn_month ROWS BETWEEN UNBOUNDED PRECEDING
+          AND CURRENT ROW
+      ) AS ending_balance
+    FROM
+      cte_months
+      LEFT JOIN cte_balances ON cte_months.customer_id = cte_balances.customer_id
+      AND cte_months.txn_month = cte_balances.txn_month
+    ORDER BY
+      cte_months.customer_id
+  ),
+  first_months AS(
+    SELECT
+      customer_id,
+      txn_month,
+      ending_balance,
+      LEAD(ending_balance) OVER(
+        PARTITION BY customer_id
+        ORDER BY
+          month_number
+      ) AS following_ending_balance,
+      month_number
+    FROM
+      monthly_balances
+    WHERE
+      month_number <= 2
+  ),
+  cte_exploration AS (
+    SELECT
+      customer_id,
+      ending_balance,
+      following_ending_balance,
+      CASE
+        WHEN ending_balance < 0 THEN 1
+        ELSE 0
+      END AS neg_first_month,
+      CASE
+        WHEN ending_balance > 0 THEN 1
+        ELSE 0
+      END AS pos_first_month,
+      CASE
+        WHEN ending_balance > 0
+        AND ending_balance *1.05 < following_ending_balance THEN 1
+        ELSE 0
+      END AS pos_first_over_5_perc_increase,
+      CASE
+        WHEN ending_balance > 0
+        AND ending_balance  - (ending_balance * 0.05) > following_ending_balance THEN 1
+        ELSE 0
+      END AS pos_first_over_5_perc_reduction,
+      CASE
+        WHEN ending_balance > 0
+        AND following_ending_balance < 0 THEN 1
+        ELSE 0
+      END AS pos_first_neg_second
+    FROM
+      first_months
+    WHERE
+      month_number = 1
+  )
+SELECT
+  ROUND(100 * SUM(neg_first_month) / COUNT(*) :: NUMERIC, 2) AS neg_first_month_perc,
+  ROUND(100 * SUM(pos_first_month) / COUNT(*) :: NUMERIC, 2) AS pos_first_month_perc,
+ROUND(
+  100 * SUM(pos_first_over_5_perc_increase) / COUNT(*) :: NUMERIC,
+  2
+) AS pos_first_over_5_perc_increase_perc,
+ROUND(
+  100 * SUM(pos_first_over_5_perc_reduction) / COUNT(*) :: NUMERIC,
+  2
+) AS pos_first_over_5_perc_reduction_perc,
+ROUND(
+  100 * SUM(pos_first_neg_second) / COUNT(*) :: NUMERIC,
+  2
+) AS pos_first_neg_second_perc
+FROM
+  cte_exploration;
+```
+
+
+|neg_first_month_perc|pos_first_month_perc|pos_first_over_5_perc_increase_perc|pos_first_over_5_perc_reduction_perc|pos_first_neg_second_perc|
+|--------------------|--------------------|-----------------------------------|------------------------------------|-------------------------|
+|31.40               |68.60               |25.40                              |34.00                               |22.80                    |
