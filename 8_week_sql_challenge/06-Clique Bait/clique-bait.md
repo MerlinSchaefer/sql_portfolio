@@ -402,27 +402,285 @@ How many times was each product added to a cart but not purchased (abandoned)?
 How many times was each product purchased?
 Additionally, create another table which further aggregates the data for the above points but this time for each product category instead of individual products.
 
+```sql
+--table1
+DROP TABLE IF EXISTS product_overview;
+CREATE TEMP TABLE product_overview AS
+WITH purchase_visits AS (
+  SELECT
+    visit_id
+  FROM
+    clique_bait.events
+  WHERE
+    event_type = 3
+),
+purchases_cte AS(
+  SELECT
+    product_id,
+    page_name,
+    product_category,
+    SUM(
+      CASE
+        WHEN event_name = 'Add to Cart' THEN 1
+        ELSE 0
+      END
+    ) AS num_purchases
+  FROM
+    clique_bait.events
+    JOIN clique_bait.event_identifier ON event_identifier.event_type = events.event_type
+    JOIN clique_bait.page_hierarchy ON page_hierarchy.page_id = events.page_id
+  WHERE
+    EXISTS (
+      SELECT
+        1
+      FROM
+        purchase_visits
+      WHERE
+        events.visit_id = purchase_visits.visit_id
+    )
+    AND product_id IS NOT NULL
+  GROUP BY
+    product_id,
+    page_name,
+    product_category
+),
+viewed_added_cte AS(
+  SELECT
+    product_id,
+    page_name,
+    product_category,
+    SUM(
+      CASE
+        WHEN event_name = 'Page View' THEN 1
+        ELSE 0
+      END
+    ) AS num_viewed,
+    SUM(
+      CASE
+        WHEN event_name = 'Add to Cart' THEN 1
+        ELSE 0
+      END
+    ) AS num_add_to_cart
+  FROM
+    clique_bait.events
+    JOIN clique_bait.event_identifier ON event_identifier.event_type = events.event_type
+    JOIN clique_bait.page_hierarchy ON page_hierarchy.page_id = events.page_id
+  WHERE
+    product_id IS NOT NULL
+  GROUP BY
+    product_id,
+    page_name,
+    product_category
+)
+SELECT
+  purchases_cte.product_id,
+  purchases_cte.page_name,
+  purchases_cte.product_category,
+  num_purchases,
+  num_viewed,
+  num_add_to_cart,
+  num_add_to_cart - num_purchases AS num_cart_abandoned
+FROM
+  purchases_cte
+  JOIN viewed_added_cte ON purchases_cte.product_id = viewed_added_cte.product_id
+ORDER BY
+  purchases_cte.product_id;
+
+--table2
+DROP TABLE IF EXISTS category_overview;
+CREATE TEMP TABLE category_overview AS
+SELECT
+  product_category,
+  SUM(num_purchases) AS num_purchases,
+  SUM(num_viewed) AS num_viewed,
+  SUM(num_add_to_cart) AS num_add_to_cart,
+  SUM(num_cart_abandoned) AS num_cart_abandoned
+FROM product_overview
+GROUP BY product_category;
+```
+
 Use your 2 new output tables - answer the following questions:
 
 Which product had the most views, cart adds and purchases?
+```sql
+SELECT
+  *
+FROM
+  product_overview
+ORDER BY
+  num_viewed DESC
+LIMIT
+  1;
+SELECT
+  *
+FROM
+  product_overview
+ORDER BY
+  num_add_to_cart DESC
+LIMIT
+  1;
+SELECT
+  *
+FROM
+  product_overview
+ORDER BY
+  num_purchases DESC
+LIMIT
+  1;
+```
+- Views: Oyster
+- Cart adds & Purchases: Lobster
+
 Which product was most likely to be abandoned?
+```sql
+SELECT
+  product_id,
+  page_name,
+  ROUND(num_cart_abandoned/num_add_to_cart::NUMERIC,2)
+FROM
+  product_overview
+ORDER BY
+  num_cart_abandoned DESC
+LIMIT
+  1;
+```
+- Russian Caviar
+
 Which product had the highest view to purchase percentage?
+```sql
+SELECT
+  product_id,
+  page_name,
+  num_viewed,
+  num_purchases,
+  ROUND(100 * num_purchases :: NUMERIC / num_viewed, 2) AS perc_view_to_purchase
+FROM
+  product_overview
+ORDER BY
+  perc_view_to_purchase;
+```
+- Lobster (48.74%)
+
 What is the average conversion rate from view to cart add?
+
+```sql
+SELECT
+  ROUND(AVG(num_add_to_cart / num_viewed :: NUMERIC), 4) AS avg_conversion_view_cart
+FROM
+  product_overview;
+```
+
+- 0.6095
+
+
 What is the average conversion rate from cart add to purchase?
 
+```sql
+SELECT
+  ROUND(AVG( num_purchases/ num_add_to_cart :: NUMERIC), 4) AS avg_conversion_view_cart
+FROM
+  product_overview;
+```
+-0.7593
 
 # Generate a table that has 1 single row for every unique visit_id record and has the following columns:
 
-user_id
-visit_id
-visit_start_time: the earliest event_time for each visit
-page_views: count of page views for each visit
-cart_adds: count of product cart add events for each visit
-purchase: 1/0 flag if a purchase event exists for each visit
-campaign_name: map the visit to a campaign if the visit_start_time falls between the start_date and end_date
-impression: count of ad impressions for each visit
-click: count of ad clicks for each visit
-(Optional column) cart_products: a comma separated text value with products added to the cart sorted by the order they were added to the cart (hint: use the sequence_number)
+- user_id
+- visit_id
+- visit_start_time: the earliest event_time for each visit
+- page_views: count of page views for each visit
+- cart_adds: count of product cart add events for each visit
+- purchase: 1/0 flag if a purchase event exists for each visit
+- campaign_name: map the visit to a campaign if the visit_start_time falls between the start_date and end_date
+- impression: count of ad impressions for each visit
+- click: count of ad clicks for each visit
+- (Optional column) cart_products: a comma separated text value with products added to the cart sorted by the order they were added to the cart (hint: use the sequence_number)
+
+```sql
+WITH base_cte AS(
+    SELECT
+      user_id,
+      visit_id,
+      MIN(event_time) AS visit_start_time,
+      SUM(
+        CASE
+          WHEN event_name = 'Page View' THEN 1
+          ELSE 0
+        END
+      ) AS page_views,
+      SUM(
+        CASE
+          WHEN event_name = 'Add to Cart' THEN 1
+          ELSE 0
+        END
+      ) AS cart_adds,
+      MAX(
+        CASE
+          WHEN event_name = 'Purchase' THEN 1
+          ELSE 0
+        END
+      ) AS purchase,
+      CASE
+        WHEN MIN(event_time) BETWEEN '2020-01-01'
+        AND '2020-01-14' THEN 1
+        WHEN MIN(event_time) BETWEEN '2020-01-15'
+        AND '2020-01-28' THEN 2
+        WHEN MIN(event_time) BETWEEN '2020-02-01'
+        AND '2020-03-31' THEN 3
+        ELSE NULL
+      END AS campaign_id,
+      SUM(
+        CASE
+          WHEN event_name = 'Ad Impression' THEN 1
+          ELSE 0
+        END
+      ) AS impression,
+      SUM(
+        CASE
+          WHEN event_name = 'Ad Click' THEN 1
+          ELSE 0
+        END
+      ) AS click,
+        STRING_AGG(
+    CASE
+      WHEN page_hierarchy.product_id IS NOT NULL AND events.event_type = 2
+        THEN page_hierarchy.page_name
+      ELSE NULL END,
+    ', ' ORDER BY events.sequence_number
+  ) AS cart_products
+    FROM
+      clique_bait.events
+      JOIN clique_bait.users ON users.cookie_id = events.cookie_id
+      JOIN clique_bait.event_identifier On event_identifier.event_type = events.event_type
+      LEFT JOIN clique_bait.page_hierarchy ON page_hierarchy.page_id = events.page_id
+    GROUP BY
+      user_id,
+      visit_id
+    ORDER BY
+      user_id,
+      visit_id
+  )
+SELECT
+  base_cte.user_id,
+  base_cte.visit_id,
+  visit_start_time,
+  page_views,
+  cart_adds,
+  purchase,
+  campaign_name,
+  impression,
+  click,
+  cart_products
+FROM
+  base_cte
+  LEFT JOIN clique_bait.campaign_identifier ON campaign_identifier.campaign_id = base_cte.campaign_id
+ORDER BY
+      user_id;
+```
+
+
+
+
 Use the subsequent dataset to generate at least 5 insights for the Clique Bait team - bonus: prepare a single A4 infographic that the team can use for their management reporting sessions, be sure to emphasise the most important points from your findings.
 
 Some ideas you might want to investigate further include:
