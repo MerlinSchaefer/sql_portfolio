@@ -163,3 +163,158 @@ FROM
 discount_cte;
 ```
 - 156229.14
+
+# Transaction Analysis
+
+1. How many unique transactions were there?
+```SQL
+SELECT
+  COUNT(DISTINCT txn_id) AS unique_txn
+FROM
+  balanced_tree.sales;
+```
+- 2500 
+
+2. What is the average unique products purchased in each transaction?
+```sql
+WITH cte_transaction_products AS (
+  SELECT
+    txn_id,
+    COUNT(DISTINCT prod_id) AS product_count  
+  FROM balanced_tree.sales
+  GROUP BY txn_id)
+SELECT
+ROUND(AVG(product_count)) AS avg_prod_per_txn
+FROM cte_transaction_products;
+```
+- 6 unique products 
+
+3. What are the 25th, 50th and 75th percentile values for the revenue per transaction?
+```sql
+WITH cte_txn_revenue AS (
+    SELECT
+      SUM(price*qty) txn_revenue
+    FROM
+      balanced_tree.sales
+    GROUP BY
+      txn_id
+  )
+SELECT
+  PERCENTILE_CONT(0.25) WITHIN GROUP (
+    ORDER BY
+      txn_revenue
+  ) AS percentile_25_revenue,
+  PERCENTILE_CONT(0.5) WITHIN GROUP (
+    ORDER BY
+      txn_revenue
+  ) AS percentile_50_revenue,
+  PERCENTILE_CONT(0.75) WITHIN GROUP (
+    ORDER BY
+      txn_revenue
+  ) AS percentile_75_revenue
+FROM
+  cte_txn_revenue;
+```
+
+|percentile_25_revenue|percentile_50_revenue|percentile_75_revenue |
+|---------------------|---------------------|----------------------|
+|         375.75         |         509.5         |         647          |
+
+
+
+4. What is the average discount value per transaction?
+```sql
+WITH cte_total_discount AS(
+    SELECT
+      SUM(price * qty *(discount :: NUMERIC / 100)) AS total_discount
+    FROM
+      balanced_tree.sales
+    GROUP BY
+      txn_id
+  )
+SELECT
+  ROUND(AVG(total_discount), 2) AS avg_total_discount
+FROM
+  cte_total_discount;
+```
+- 62.49 ($?)
+
+5. What is the percentage split of all transactions for members vs non-members?
+
+```sql
+SELECT
+  member,
+  COUNT(DISTINCT txn_id) AS num_transactions,
+  ROUND(
+    COUNT(DISTINCT txn_id) /(
+      SELECT
+        COUNT(DISTINCT txn_id)
+      FROM
+        balanced_tree.sales
+    ) :: NUMERIC,
+    2
+  ) * 100 AS perc_transactions
+FROM
+  balanced_tree.sales
+GROUP BY
+  member;
+```
+
+|member|num_transactions|perc_transactions |
+|------|----------------|------------------|
+|false |      995       |        40        |
+| true |      1505      |        60        |
+
+
+
+
+
+6. What is the average revenue for member transactions and non-member transactions?
+```sql
+WITH cte_revenue_member AS (
+    SELECT
+      txn_id,
+      member,
+      SUM(price * qty) AS total_revenue
+    FROM
+      balanced_tree.sales
+    GROUP BY
+      txn_id,
+      member
+  )
+SELECT
+  member,
+  ROUND(AVG(total_revenue), 2) AS avg_revneue
+FROM
+  cte_revenue_member
+GROUP BY
+  member;
+```
+|   member   |avg_revneue |
+|------------|------------|
+|   false    |   515.04   |
+|    true    |   516.27   |
+
+
+
+# Product Analysis
+
+1. What are the top 3 products by total revenue before discount?
+
+2. What is the total quantity, revenue and discount for each segment?
+
+3. What is the top selling product for each segment?
+
+4. What is the total quantity, revenue and discount for each category?
+
+5. What is the top selling product for each category?
+
+6. What is the percentage split of revenue by product for each segment?
+
+7. What is the percentage split of revenue by segment for each category?
+
+8. What is the percentage split of total revenue by category?
+
+9. What is the total transaction “penetration” for each product? (hint: penetration = number of transactions where at least 1 quantity of a product was purchased divided by total number of transactions)
+
+10. What is the most common combination of at least 1 quantity of any 3 products in a 1 single transaction?
