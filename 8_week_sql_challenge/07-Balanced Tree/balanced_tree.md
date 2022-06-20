@@ -300,10 +300,105 @@ GROUP BY
 # Product Analysis
 
 1. What are the top 3 products by total revenue before discount?
+```sql
+SELECT
+  sales.prod_id,
+  pd.product_name,
+  SUM(sales.qty * sales.price) AS total_revenue
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+GROUP BY
+  sales.prod_id,
+  pd.product_name
+ORDER BY
+  total_revenue DESC
+LIMIT
+  3;
+```
+
+|prod_id|product_name|         total_revenue         |
+|-------|------------|-------------------------------|
+|2a2353 |    Blue    |   Polo Shirt - Mens 217683    |
+|9ec847 |    Grey    |Fashion Jacket - Womens 209304 |
+|5d267b |   White    |    Tee Shirt - Mens 152000    |
+
+
+
 
 2. What is the total quantity, revenue and discount for each segment?
 
+```sql
+SELECT
+  pd.segment_id,
+  pd.segment_name,
+  SUM(sales.qty) AS total_qty,
+  SUM(sales.qty * sales.price) AS total_revenue,
+  ROUND(
+    SUM(
+      sales.qty * sales.price * sales.discount :: NUMERIC / 100
+    ),
+    2
+  ) AS total_discount
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+GROUP BY
+  pd.segment_id,
+  pd.segment_name;
+```
+
+|segment_id|segment_name|total_qty|total_revenue|total_discount |
+|----------|------------|---------|-------------|---------------|
+|    4     |   Jacket   |  11385  |   366983    |   44277.46    |
+|    6     |   Socks    |  11217  |   307977    |   37013.44    |
+|    5     |   Shirt    |  11265  |   406143    |   49594.27    |
+|    3     |   Jeans    |  11349  |   208350    |   25343.97    |
+
+
+
 3. What is the top selling product for each segment?
+
+- top selling is ambiguous. Would need to clarify the exact meaning. Here I am going with quantity.
+
+```sql
+WITH cte_prod_qty AS (
+    SELECT
+      pd.segment_id,
+      pd.segment_name,
+      pd.product_id,
+      pd.product_name,
+      SUM(sales.qty) AS total_qty,
+      RANK() OVER(
+        PARTITION BY pd.segment_id
+        ORDER BY
+          SUM(sales.qty) DESC
+      ) rank_total_qty
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.segment_id,
+      pd.segment_name,
+      pd.product_id,
+      pd.product_name
+  )
+SELECT
+  *
+FROM
+  cte_prod_qty
+WHERE rank_total_qty = 1
+ORDER BY
+  segment_id;
+```
+
+|segment_id|segment_name|product_id|product_name|total_qty|    rank_total_qty     |
+|----------|------------|----------|------------|---------|-----------------------|
+|    3     |   Jeans    |  c4a632  |    Navy    |Oversized| Jeans - Womens 3856 1 |
+|    4     |   Jacket   |  9ec847  |    Grey    | Fashion |Jacket - Womens 3876 1 |
+|    5     |   Shirt    |  2a2353  |    Blue    |  Polo   |  Shirt - Mens 3819 1  |
+|    6     |   Socks    |  f084eb  |    Navy    |  Solid  |  Socks - Mens 3792 1  |
+
 
 4. What is the total quantity, revenue and discount for each category?
 

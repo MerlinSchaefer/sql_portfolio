@@ -198,3 +198,68 @@ FROM
   cte_revenue_member
 GROUP BY
   member;
+
+-- q3.1
+SELECT
+  sales.prod_id,
+  pd.product_name,
+  SUM(sales.qty * sales.price) AS total_revenue
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+GROUP BY
+  sales.prod_id,
+  pd.product_name
+ORDER BY
+  total_revenue DESC
+LIMIT
+  3;
+
+-- q3.2
+SELECT
+  pd.segment_id,
+  pd.segment_name,
+  SUM(sales.qty) AS total_qty,
+  SUM(sales.qty * sales.price) AS total_revenue,
+  ROUND(
+    SUM(
+      sales.qty * sales.price * sales.discount :: NUMERIC / 100
+    ),
+    2
+  ) AS total_discount
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+GROUP BY
+  pd.segment_id,
+  pd.segment_name;
+
+-- q3.3
+WITH cte_prod_qty AS (
+    SELECT
+      pd.segment_id,
+      pd.segment_name,
+      pd.product_id,
+      pd.product_name,
+      SUM(sales.qty) AS total_qty,
+      RANK() OVER(
+        PARTITION BY pd.segment_id
+        ORDER BY
+          SUM(sales.qty) DESC
+      ) rank_total_qty
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.segment_id,
+      pd.segment_name,
+      pd.product_id,
+      pd.product_name
+  )
+SELECT
+  *
+FROM
+  cte_prod_qty
+WHERE rank_total_qty = 1
+ORDER BY
+  segment_id;
