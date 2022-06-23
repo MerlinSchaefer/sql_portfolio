@@ -263,3 +263,140 @@ FROM
 WHERE rank_total_qty = 1
 ORDER BY
   segment_id;
+
+-- q3.4
+SELECT
+  pd.category_id,
+  pd.category_name,
+  SUM(sales.qty) AS total_qty,
+  SUM(sales.qty * sales.price) AS total_revenue,
+  ROUND(
+    SUM(
+      sales.qty * sales.price * sales.discount :: NUMERIC / 100
+    ),
+    2
+  ) AS total_discount
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+GROUP BY
+  pd.category_id,
+  pd.category_name
+ORDER BY
+  pd.category_id;
+
+  -- q3.5
+  WITH cte_prod_qty AS (
+    SELECT
+      pd.category_id,
+      pd.category_name,
+      pd.product_id,
+      pd.product_name,
+      SUM(sales.qty) AS total_qty,
+      RANK() OVER(
+        PARTITION BY pd.category_id
+        ORDER BY
+          SUM(sales.qty) DESC
+      ) rank_total_qty
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.category_id,
+      pd.category_name,
+      pd.product_id,
+      pd.product_name
+  )
+SELECT
+  *
+FROM
+  cte_prod_qty
+WHERE rank_total_qty = 1
+ORDER BY
+  category_id;
+-- q3.6
+WITH cte_segment_revenue AS(
+    SELECT
+      pd.segment_id,
+      pd.segment_name,
+      pd.product_id,
+      pd.product_name,
+      SUM(sales.qty * sales.price) AS revenue
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      segment_id,
+      segment_name,
+      pd.product_id,
+      pd.product_name
+  )
+SELECT
+  segment_id,
+  segment_name,
+  product_id,
+  product_name,
+  ROUND(
+    revenue :: NUMERIC / SUM(revenue) OVER(PARTITION BY segment_id) * 100,
+    2
+  ) AS perc_revenue
+FROM
+  cte_segment_revenue
+ORDER BY
+  segment_id;
+
+-- q3.7
+WITH cte_category_revenue AS(
+    SELECT
+      pd.category_id,
+      pd.category_name,
+      segment_id,
+      segment_name,
+      SUM(sales.qty * sales.price) AS revenue
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.category_id,
+      pd.category_name,
+      pd.segment_id,
+      pd.segment_name
+  )
+SELECT
+  category_id,
+  category_name,
+  segment_id,
+  segment_name,
+  ROUND(
+    revenue :: NUMERIC / SUM(revenue) OVER(PARTITION BY category_id) * 100,
+    2
+  ) AS perc_revenue
+FROM
+  cte_category_revenue
+ORDER BY
+  category_id;
+
+-- q3.8
+WITH cte_category_revenue AS(
+    SELECT
+      pd.category_id,
+      pd.category_name,
+      SUM(sales.qty * sales.price) AS revenue
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.category_id,
+      pd.category_name
+  )
+SELECT
+  category_id,
+  category_name,
+  ROUND(
+    revenue :: NUMERIC / SUM(revenue) OVER() * 100,
+    2
+  ) AS perc_revenue
+FROM
+  cte_category_revenue
+ORDER BY
+  category_id;

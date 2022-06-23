@@ -401,14 +401,197 @@ ORDER BY
 
 
 4. What is the total quantity, revenue and discount for each category?
+```sql
+SELECT
+  pd.category_id,
+  pd.category_name,
+  SUM(sales.qty) AS total_qty,
+  SUM(sales.qty * sales.price) AS total_revenue,
+  ROUND(
+    SUM(
+      sales.qty * sales.price * sales.discount :: NUMERIC / 100
+    ),
+    2
+  ) AS total_discount
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+GROUP BY
+  pd.category_id,
+  pd.category_name
+ORDER BY
+  pd.category_id;
+```
+
+|category_id|category_name|total_qty|total_revenue|total_discount |
+|-----------|-------------|---------|-------------|---------------|
+|     1     |   Womens    |  22734  |   575333    |   69621.43    |
+|     2     |    Mens     |  22482  |   714120    |   86607.71    |
+
 
 5. What is the top selling product for each category?
 
+```sql
+WITH cte_prod_qty AS (
+    SELECT
+      pd.category_id,
+      pd.category_name,
+      pd.product_id,
+      pd.product_name,
+      SUM(sales.qty) AS total_qty,
+      RANK() OVER(
+        PARTITION BY pd.category_id
+        ORDER BY
+          SUM(sales.qty) DESC
+      ) rank_total_qty
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.category_id,
+      pd.category_name,
+      pd.product_id,
+      pd.product_name
+  )
+SELECT
+  *
+FROM
+  cte_prod_qty
+WHERE rank_total_qty = 1
+ORDER BY
+  category_id;
+```
+
+|category_id|category_name|product_id|product_name|total_qty|    rank_total_qty     |
+|-----------|-------------|----------|------------|---------|-----------------------|
+|     1     |   Womens    |  9ec847  |    Grey    | Fashion |Jacket - Womens 3876 1 |
+|     2     |    Mens     |  2a2353  |    Blue    |  Polo   |  Shirt - Mens 3819 1  |
+
+
 6. What is the percentage split of revenue by product for each segment?
+```sql
+WITH cte_segment_revenue AS(
+    SELECT
+      pd.segment_id,
+      pd.segment_name,
+      pd.product_id,
+      pd.product_name,
+      SUM(sales.qty * sales.price) AS revenue
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      segment_id,
+      segment_name,
+      pd.product_id,
+      pd.product_name
+  )
+SELECT
+  segment_id,
+  segment_name,
+  product_id,
+  product_name,
+  ROUND(
+    revenue :: NUMERIC / SUM(revenue) OVER(PARTITION BY segment_id) * 100,
+    2
+  ) AS perc_revenue
+FROM
+  cte_segment_revenue
+ORDER BY
+  segment_id;
+```
+
+|segment_id|segment_name|product_id|product_name|          perc_revenue           |
+|----------|------------|----------|------------|---------------------------------|
+|    3     |   Jeans    |  c4a632  |    Navy    | Oversized Jeans - Womens 24.06  |
+|    3     |   Jeans    |  e83aa3  |   Black    |  Straight Jeans - Womens 58.15  |
+|    3     |   Jeans    |  e31d39  |   Cream    |  Relaxed Jeans - Womens 17.79   |
+|    4     |   Jacket   |  d5e9a6  |   Khaki    |   Suit Jacket - Womens 23.51    |
+|    4     |   Jacket   |  9ec847  |    Grey    |  Fashion Jacket - Womens 57.03  |
+|    4     |   Jacket   |  72f5d4  |   Indigo   |   Rain Jacket - Womens 19.45    |
+|    5     |   Shirt    |  5d267b  |   White    |     Tee Shirt - Mens 37.43      |
+|    5     |   Shirt    |  2a2353  |    Blue    |     Polo Shirt - Mens 53.6      |
+|    5     |   Shirt    |  c8d436  |    Teal    |   Button Up Shirt - Mens 8.98   |
+|    6     |   Socks    |  f084eb  |    Navy    |    Solid Socks - Mens 44.33     |
+|    6     |   Socks    |  b9a74d  |   White    |   Striped Socks - Mens 20.18    |
+|    6     |   Socks    |  2feb6b  |    Pink    |Fluro Polkadot Socks - Mens 35.5 |
 
 7. What is the percentage split of revenue by segment for each category?
 
+```sql
+WITH cte_category_revenue AS(
+    SELECT
+      pd.category_id,
+      pd.category_name,
+      segment_id,
+      segment_name,
+      SUM(sales.qty * sales.price) AS revenue
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.category_id,
+      pd.category_name,
+      pd.segment_id,
+      pd.segment_name
+  )
+SELECT
+  category_id,
+  category_name,
+  segment_id,
+  segment_name,
+  ROUND(
+    revenue :: NUMERIC / SUM(revenue) OVER(PARTITION BY category_id) * 100,
+    2
+  ) AS perc_revenue
+FROM
+  cte_category_revenue
+ORDER BY
+  category_id;
+```
+
+|category_id|category_name|segment_id|segment_name|perc_revenue |
+|-----------|-------------|----------|------------|-------------|
+|     1     |   Womens    |    4     |   Jacket   |    63.79    |
+|     1     |   Womens    |    3     |   Jeans    |    36.21    |
+|     2     |    Mens     |    5     |   Shirt    |    56.87    |
+|     2     |    Mens     |    6     |   Socks    |    43.13    |
+
+
 8. What is the percentage split of total revenue by category?
+
+```sql
+WITH cte_category_revenue AS(
+    SELECT
+      pd.category_id,
+      pd.category_name,
+      SUM(sales.qty * sales.price) AS revenue
+    FROM
+      balanced_tree.sales AS sales
+      JOIN balanced_tree.product_details AS pd ON sales.prod_id = pd.product_id
+    GROUP BY
+      pd.category_id,
+      pd.category_name
+  )
+SELECT
+  category_id,
+  category_name,
+  ROUND(
+    revenue :: NUMERIC / SUM(revenue) OVER() * 100,
+    2
+  ) AS perc_revenue
+FROM
+  cte_category_revenue
+ORDER BY
+  category_id;
+```
+
+|category_id|category_name|perc_revenue |
+|-----------|-------------|-------------|
+|     1     |   Womens    |    44.62    |
+|     2     |    Mens     |    55.38    |
+
+
 
 9. What is the total transaction “penetration” for each product? (hint: penetration = number of transactions where at least 1 quantity of a product was purchased divided by total number of transactions)
 
