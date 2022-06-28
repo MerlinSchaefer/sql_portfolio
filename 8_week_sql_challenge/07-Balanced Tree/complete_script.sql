@@ -400,3 +400,24 @@ FROM
   cte_category_revenue
 ORDER BY
   category_id;
+
+-- q3.9
+SELECT
+  prod_id,
+  product_name,
+  ROUND(
+    COUNT(DISTINCT txn_id) / (
+      SELECT
+        COUNT(DISTINCT txn_id)
+      FROM
+        balanced_tree.sales
+    )::NUMERIC * 100,
+    2
+  ) AS product_penetration
+FROM
+  balanced_tree.sales AS sales
+  JOIN balanced_tree.product_details AS pd ON pd.product_id = sales.prod_id
+GROUP BY
+  prod_id,
+  product_name
+ORDER BY product_penetration DESC;
