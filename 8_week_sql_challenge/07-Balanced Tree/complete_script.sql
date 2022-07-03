@@ -421,3 +421,120 @@ GROUP BY
   prod_id,
   product_name
 ORDER BY product_penetration DESC;
+
+-- q.10
+DROP TABLE IF EXISTS temp_prod_combinations;
+CREATE TEMP TABLE temp_prod_combinations AS WITH RECURSIVE input(product) AS(
+    SELECT
+      product_id :: TEXT
+    FROM
+      balanced_tree.product_details
+  ),
+  cte_prod_combinations AS(
+    SELECT
+      ARRAY [product] as combination,
+      product,
+      1 AS product_counter
+    FROM
+      input
+    UNION
+    SELECT
+      ARRAY_APPEND(cte_prod_combinations.combination, input.product),
+      input.product,
+      product_counter + 1
+    FROM
+      cte_prod_combinations
+      JOIN input ON input.product > cte_prod_combinations.product
+    WHERE
+      cte_prod_combinations.product_counter <= 2
+  )
+SELECT
+  *
+FROM
+  cte_prod_combinations
+WHERE
+  product_counter >= 3;
+SELECT
+  *
+FROM
+  temp_prod_combinations;
+WITH cte_transaction_products AS(
+    SELECT
+      txn_id,
+      ARRAY_AGG(
+        prod_id :: TEXT
+        ORDER BY
+          prod_id
+      ) AS products
+    FROM
+      balanced_tree.sales
+    GROUP BY
+      txn_id
+  ),
+  cte_transaction_combinations AS(
+    SELECT
+      txn_id,
+      products,
+      combination
+    FROM
+      cte_transaction_products
+      CROSS JOIN temp_prod_combinations
+    WHERE
+      combination <@ products
+  ),
+  cte_ranked_combinations AS (
+    SELECT
+      combination,
+      COUNT(DISTINCT txn_id) AS count_combination,
+      RANK() OVER(
+        ORDER BY
+          COUNT(DISTINCT txn_id) DESC
+      ) AS combination_rank,
+      ROW_NUMBER() OVER(
+        ORDER BY
+          COUNT(DISTINCT txn_id) DESC
+      ) AS combination_rownumber
+    FROM
+      cte_transaction_combinations
+    GROUP BY
+      combination
+    ORDER BY
+      count_combination DESC
+  ),
+  cte_most_common_combination_txn AS(
+    SELECT
+      cte_transaction_combinations.txn_id,
+      cte_ranked_combinations.combination_rownumber,
+      UNNEST(cte_ranked_combinations.combination) AS prod_id
+    FROM
+      cte_transaction_combinations
+      INNER JOIN cte_ranked_combinations ON cte_transaction_combinations.combination = cte_ranked_combinations.combination
+    WHERE
+      cte_ranked_combinations.combination_rank = 1
+  )
+SELECT
+  product_details.product_id,
+  product_details.product_name,
+  COUNT(DISTINCT sales.txn_id) AS combo_transaction_count,
+  SUM(sales.qty) AS total_qty,
+  SUM(sales.qty * sales.price) AS total_revenue,
+  ROUND(
+    SUM(
+      sales.qty * sales.price * sales.discount :: NUMERIC / 100
+    ),
+    2
+  ) AS total_discount,
+  SUM(sales.qty * sales.price) - ROUND(
+    SUM(
+      sales.qty * sales.price * sales.discount :: NUMERIC / 100
+    ),
+    2
+  ) AS net_revenue
+FROM
+  balanced_tree.sales
+  JOIN cte_most_common_combination_txn ON cte_most_common_combination_txn.prod_id = sales.prod_id
+  AND cte_most_common_combination_txn.txn_id = sales.txn_id
+  JOIN balanced_tree.product_details ON product_details.product_id = sales.prod_id
+GROUP BY
+  product_id,
+  product_name;
