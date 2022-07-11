@@ -207,8 +207,8 @@ SELECT
     END
   ) AS map_ids_not_in_metrics
 FROM
-  interest_metrics_clean as metrics FULL
-  OUTER JOIN fresh_segments.interest_map as map ON map.id = metrics.interest_id;
+  interest_metrics_clean as metrics 
+  FULL OUTER JOIN fresh_segments.interest_map as map ON map.id = metrics.interest_id;
 ```
 |metrics_ids|map_ids|metrics_ids_not_map|map_ids_not_in_metrics |
 |-----------|-------|-------------------|-----------------------|
@@ -264,12 +264,121 @@ There are 188 records where this is the case, however they all share the month a
 # Interest Analysis
 
 1. Which interests have been present in all month_year dates in our dataset?
+```sql
+WITH cte_monthcount AS (
+    SELECT
+      interest_id,
+      COUNT(month_year) AS month_count
+    FROM
+      interest_metrics_clean
+    GROUP BY
+      interest_id
+  )
+SELECT
+  month_count,
+  COUNT(interest_id)
+FROM
+  cte_monthcount
+GROUP BY
+  month_count
+ORDER BY
+  month_count DESC
+LIMIT
+  1;
+```
+- 480 interest have been present in all 14 month_year dates. The actual interests can be obtained via:
+```sql
+    SELECT
+      interest_id
+    FROM
+      interest_metrics_clean
+    GROUP BY
+      interest_id
+    HAVING COUNT(month_year) = 14
+```
+- table not shown due to length
+
 
 2. Using this same total_months measure - calculate the cumulative percentage of all records starting at 14 months - which total_months value passes the 90% cumulative percentage value?
+```sql
+WITH cte_monthcount AS (
+    SELECT
+      interest_id,
+      COUNT(month_year) AS month_count
+    FROM
+      interest_metrics_clean
+    GROUP BY
+      interest_id
+  ),
+  cte_interestcount AS (
+    SELECT
+      month_count,
+      COUNT(interest_id) as num_interests
+    FROM
+      cte_monthcount
+    GROUP BY
+      month_count
+    ORDER BY
+      month_count DESC
+  )
+SELECT
+  month_count,
+  num_interests,
+  ROUND(
+    (
+      SUM(num_interests) OVER(
+        ORDER BY
+          month_count DESC
+      ) / SUM(num_interests) OVER() * 100
+    ),
+    2
+  ) AS percentile_of_interests
+FROM
+  cte_interestcount
+ORDER BY month_count DESC;
+```
+
+|month_count|num_interests|percentile_of_interests |
+|-----------|-------------|------------------------|
+|    14     |     480     |         39.93          |
+|    13     |     82      |         46.76          |
+|    12     |     65      |         52.16          |
+|    11     |     94      |         59.98          |
+|    10     |     86      |         67.14          |
+|     9     |     95      |         75.04          |
+|     8     |     67      |         80.62          |
+|     7     |     90      |          88.1          |
+|     6     |     33      |         90.85          |
+|     5     |     38      |         94.01          |
+|     4     |     32      |         96.67          |
+|     3     |     15      |         97.92          |
+|     2     |     12      |         98.92          |
+|     1     |     13      |          100           |
+
 
 3. If we were to remove all interest_id values which are lower than the total_months value we found in the previous question - how many total data points would we be removing?
+```sql
+WITH cte_removed_interests AS (
+SELECT
+  interest_id
+FROM interest_metrics_clean
+GROUP BY interest_id
+HAVING COUNT(DISTINCT month_year) < 6
+)
+SELECT
+  COUNT(*) AS removed_rows
+FROM interest_metrics_clean
+WHERE  EXISTS (
+  SELECT *
+  FROM cte_removed_interests
+  WHERE interest_metrics_clean.interest_id = cte_removed_interests.interest_id
+);
+```
+- 400
 
-4. Does this decision make sense to remove these data points from a business perspective? Use an example where there are all 14 months present to a removed interest example for your arguments - think about what it means to have less months present from a segment perspective. > 5. If we include all of our interests regardless of their counts - how many unique interests are there for each month?
+4. Does this decision make sense to remove these data points from a business perspective? Use an example where there are all 14 months present to a removed interest example for your arguments - think about what it means to have less months present from a segment perspective.
+
+5. If we include all of our interests regardless of their counts - how many unique interests are there for each month?
 
 # Segment Analysis
 

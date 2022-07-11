@@ -68,3 +68,29 @@ FROM
   duplicates_cte
 WHERE num_occurences > 1;
 
+-- Count of entries in the table
+
+SELECT
+  COUNT(*)
+FROM
+  fresh_segments.interest_metrics;
+
+SELECT
+  COUNT(*)
+FROM
+  fresh_segments.interest_map;
+
+-- NULL Values
+
+SELECT
+  *
+FROM
+  fresh_segments.interest_map
+WHERE
+  id IS NULL;6a
+SELECT
+  *
+FROM
+  fresh_segments.interest_metrics
+WHERE
+  interest_id IS NULL;
