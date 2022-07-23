@@ -376,20 +376,143 @@ WHERE  EXISTS (
 ```
 - 400
 
-4. Does this decision make sense to remove these data points from a business perspective? Use an example where there are all 14 months present to a removed interest example for your arguments - think about what it means to have less months present from a segment perspective.
-
-5. If we include all of our interests regardless of their counts - how many unique interests are there for each month?
 
 # Segment Analysis
 
-1. Using the complete dataset - which are the top 10 and bottom 10 interests which have the largest composition values in any month_year? Only use the maximum composition value for each interest but you must keep the corresponding month_year
+1. Using the complete dataset - which are the top 10 and bottom 10 interests which have the largest composition values in any month_year? Only use the maximum composition value for each interest but keep the corresponding month_year
+
+```sql
+WITH cte_ranked_composition AS(
+  SELECT
+    metrics.month_year,
+    map.interest_name,
+    metrics.composition,
+    RANK() OVER(
+      PARTITION BY interest_id
+      ORDER BY
+        composition DESC
+    ) AS comp_rank_within
+  FROM
+    fresh_segments.interest_map AS map
+    JOIN fresh_segments.interest_metrics AS metrics ON map.id = metrics.interest_id
+),
+cte_top_10 AS(
+  SELECT
+    month_year,
+    interest_name,
+    composition
+  FROM
+    cte_ranked_composition
+  WHERE
+    comp_rank_within = 1
+  ORDER BY
+    composition DESC
+  LIMIT
+    10
+), cte_bottom_10 AS(
+  SELECT
+    month_year,
+    interest_name,
+    composition
+  FROM
+    cte_ranked_composition
+  WHERE
+    comp_rank_within = 1
+  ORDER BY
+    composition ASC
+  LIMIT
+    10
+)
+SELECT
+  *
+FROM
+  cte_top_10
+UNION ALL
+SELECT
+  *
+FROM
+  cte_bottom_10
+ORDER BY
+  composition DESC;
+```
+
+|month_year|interest_name|            composition            |
+|----------|-------------|-----------------------------------|
+|  Dec-18  |    Work     |    Comes First Travelers 21.2     |
+|  Jul-18  |     Gym     |      Equipment Owners 18.82       |
+|  Jul-18  |  Furniture  |          Shoppers 17.44           |
+|  Jul-18  |   Luxury    |       Retail Shoppers 17.19       |
+|  Oct-18  |   Luxury    | Boutique Hotel Researchers 15.15  |
+|  Dec-18  |   Luxury    |      Bedding Shoppers 15.05       |
+|  Jul-18  |    Shoe     |          Shoppers 14.91           |
+|  Jul-18  |  Cosmetics  |     and Beauty Shoppers 14.23     |
+|  Jul-18  |   Luxury    |         Hotel Guests 14.1         |
+|  Jul-18  |   Luxury    |     Retail Researchers 13.97      |
+|  Jul-18  |   Readers   |     of Jamaican Content 1.86      |
+|  Feb-19  | Automotive  |         News Readers 1.84         |
+|  Jul-18  |   Comedy    |             Fans 1.83             |
+|  Aug-19  |    World    |   of Warcraft Enthusiasts 1.82    |
+|  Aug-18  |    Miami    |          Heat Fans 1.81           |
+|  Jul-18  |   Online    |Role Playing Game Enthusiasts 1.73 |
+|  Aug-19  | Hearthstone |       Video Game Fans 1.66        |
+|  Sep-18  |    Scifi    |   Movie and TV Enthusiasts 1.61   |
+|  Sep-18  |   Action    |   Movie and TV Enthusiasts 1.59   |
+|  Mar-19  |     The     |     Sims Video Game Fans 1.57     |
+
 
 2. Which 5 interests had the lowest average ranking value?
-Which 5 interests had the largest standard deviation in their percentile_ranking value?
 
-3. For the 5 interests found in the previous question - what was minimum and maximum percentile_ranking values for each interest and its corresponding year_month value? Can you describe what is happening for these 5 interests?
+```sql
+SELECT
+  DISTINCT interest_id,
+  interest_name,
+  ROUND(AVG(ranking) OVER(PARTITION BY interest_id), 2) avg_ranking
+FROM
+  fresh_segments.interest_metrics AS metrics
+  JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+ORDER BY
+  avg_ranking
+LIMIT
+  5;
+```
 
-4. How would you describe our customers in this segment based off their composition and ranking values? What sort of products or services should we show to these customers and what should we avoid?
+|interest_id|interest_name|        avg_ranking         |
+|-----------|-------------|----------------------------|
+|   41548   |   Winter    |     Apparel Shoppers 1     |
+|   42203   |   Fitness   |Activity Tracker Users 4.11 |
+|    115    |    Men's    |     Shoe Shoppers 5.93     |
+|   48154   |    Elite    | Cycling Gear Shoppers 7.8  |
+|    171    |    Shoe     |       Shoppers 9.36        |
+
+
+3. Which 5 interests had the largest standard deviation in their percentile_ranking value?
+```sql
+SELECT
+  DISTINCT interest_id,
+  interest_name,
+  STDDEV(percentile_ranking) OVER(PARTITION BY interest_id) std_percentile_ranking
+FROM
+  fresh_segments.interest_metrics AS metrics
+  JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+ORDER BY
+  std_percentile_ranking DESC NULLS LAST
+LIMIT
+  5;
+```
+
+|interest_id|interest_name|       std_percentile_ranking        |
+|-----------|-------------|-------------------------------------|
+|   6260    | Blockbuster |       Movie Fans 41.27382282        |
+|    131    |   Android   |          Fans 30.72076789           |
+|    150    |     TV      |         Junkies 30.36397487         |
+|    23     |   Techies   |             30.17504709             |
+|   20764   |Entertainment|Industry Decision Makers 28.97491996 |
+
+
+
+4. For the 5 interests found in the previous question - what was minimum and maximum percentile_ranking values for each interest and its corresponding year_month value? Can you describe what is happening for these 5 interests?
+
+5. How would you describe our customers in this segment based off their composition and ranking values? What sort of products or services should we show to these customers and what should we avoid?
 
 # Index Analysis
 The index_value is a measure which can be used to reverse calculate the average composition for Fresh Segments’ clients.
