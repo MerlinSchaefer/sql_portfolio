@@ -830,6 +830,7 @@ FROM
 WHERE
   two_months_prior IS NOT NULL;
 ```
+
 |month_year|interest_id                           |interest_name|max_avg_composition|3_month_moving_avg|one_month_prior                  |two_months_prior                 |
 |----------|--------------------------------------|-------------|-------------------|------------------|---------------------------------|---------------------------------|
 |2018-09-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|8.26               |7.61              |Las Vegas Trip Planners: 7.21    |Las Vegas Trip Planners: 7.36    |
