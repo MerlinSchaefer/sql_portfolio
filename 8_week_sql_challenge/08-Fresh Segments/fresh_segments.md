@@ -511,7 +511,70 @@ LIMIT
 
 4. For the 5 interests found in the previous question - what was minimum and maximum percentile_ranking values for each interest and its corresponding year_month value? Can you describe what is happening for these 5 interests?
 
-5. How would you describe our customers in this segment based off their composition and ranking values? What sort of products or services should we show to these customers and what should we avoid?
+```sql
+WITH cte_top5_std_perc_ranking AS (
+  SELECT
+    DISTINCT interest_id,
+    interest_name,
+    STDDEV(percentile_ranking) OVER(PARTITION BY interest_id) std_percentile_ranking
+  FROM
+    fresh_segments.interest_metrics AS metrics
+    JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+  ORDER BY
+    std_percentile_ranking DESC NULLS LAST
+  LIMIT
+    5
+)
+SELECT
+  interest_id,
+  interest_name,
+  month_year,
+  percentile_ranking,
+  MAX(percentile_ranking) OVER(PARTITION BY interest_id) overall_max_perc_ranking,
+  MIN(percentile_ranking) OVER(PARTITION BY interest_id) overall_min_perc_ranking
+FROM
+  fresh_segments.interest_metrics AS metrics
+  JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+WHERE
+  interest_id IN (
+    SELECT
+      interest_id
+    FROM
+      cte_top5_std_perc_ranking
+  )
+ORDER BY
+  interest_id,
+  percentile_ranking;
+```
+
+|interest_id|interest_name                         |month_year|percentile_ranking|overall_max_perc_ranking|overall_min_perc_ranking|
+|-----------|--------------------------------------|----------|------------------|------------------------|------------------------|
+|23         |Techies                               |Aug-19    |7.92              |86.69                   |7.92                    |
+|23         |Techies                               |Feb-19    |9.46              |86.69                   |7.92                    |
+|23         |Techies                               |Mar-19    |9.68              |86.69                   |7.92                    |
+|23         |Techies                               |Sep-18    |23.85             |86.69                   |7.92                    |
+|23         |Techies                               |Aug-18    |30.9              |86.69                   |7.92                    |
+|23         |Techies                               |Jul-18    |86.69             |86.69                   |7.92                    |
+|131        |Android Fans                          |Mar-19    |4.84              |75.03                   |4.84                    |
+|131        |Android Fans                          |Aug-19    |4.96              |75.03                   |4.84                    |
+|131        |Android Fans                          |Feb-19    |5.62              |75.03                   |4.84                    |
+|131        |Android Fans                          |Aug-18    |10.82             |75.03                   |4.84                    |
+|131        |Android Fans                          |Jul-18    |75.03             |75.03                   |4.84                    |
+|150        |TV Junkies                            |Aug-19    |10.01             |93.28                   |10.01                   |
+|150        |TV Junkies                            |Aug-18    |37.29             |93.28                   |10.01                   |
+|150        |TV Junkies                            |Dec-18    |37.79             |93.28                   |10.01                   |
+|150        |TV Junkies                            |Oct-18    |49.82             |93.28                   |10.01                   |
+|150        |TV Junkies                            |Jul-18    |93.28             |93.28                   |10.01                   |
+|6260       |Blockbuster Movie Fans                |Aug-19    |2.26              |60.63                   |2.26                    |
+|6260       |Blockbuster Movie Fans                |Jul-18    |60.63             |60.63                   |2.26                    |
+|20764      |Entertainment Industry Decision Makers|Aug-19    |11.23             |86.15                   |11.23                   |
+|20764      |Entertainment Industry Decision Makers|Mar-19    |11.53             |86.15                   |11.23                   |
+|20764      |Entertainment Industry Decision Makers|Aug-18    |16.04             |86.15                   |11.23                   |
+|20764      |Entertainment Industry Decision Makers|Oct-18    |18.67             |86.15                   |11.23                   |
+|20764      |Entertainment Industry Decision Makers|Feb-19    |22.12             |86.15                   |11.23                   |
+|20764      |Entertainment Industry Decision Makers|Jul-18    |86.15             |86.15                   |11.23                   |
+
+
 
 # Index Analysis
 The index_value is a measure which can be used to reverse calculate the average composition for Fresh Segments’ clients.
