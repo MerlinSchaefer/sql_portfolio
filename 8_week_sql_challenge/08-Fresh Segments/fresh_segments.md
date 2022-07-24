@@ -438,26 +438,26 @@ ORDER BY
 
 |month_year|interest_name|            composition            |
 |----------|-------------|-----------------------------------|
-|  Dec-18  |    Work     |    Comes First Travelers 21.2     |
-|  Jul-18  |     Gym     |      Equipment Owners 18.82       |
-|  Jul-18  |  Furniture  |          Shoppers 17.44           |
-|  Jul-18  |   Luxury    |       Retail Shoppers 17.19       |
-|  Oct-18  |   Luxury    | Boutique Hotel Researchers 15.15  |
-|  Dec-18  |   Luxury    |      Bedding Shoppers 15.05       |
-|  Jul-18  |    Shoe     |          Shoppers 14.91           |
-|  Jul-18  |  Cosmetics  |     and Beauty Shoppers 14.23     |
-|  Jul-18  |   Luxury    |         Hotel Guests 14.1         |
-|  Jul-18  |   Luxury    |     Retail Researchers 13.97      |
-|  Jul-18  |   Readers   |     of Jamaican Content 1.86      |
-|  Feb-19  | Automotive  |         News Readers 1.84         |
-|  Jul-18  |   Comedy    |             Fans 1.83             |
-|  Aug-19  |    World    |   of Warcraft Enthusiasts 1.82    |
-|  Aug-18  |    Miami    |          Heat Fans 1.81           |
-|  Jul-18  |   Online    |Role Playing Game Enthusiasts 1.73 |
-|  Aug-19  | Hearthstone |       Video Game Fans 1.66        |
-|  Sep-18  |    Scifi    |   Movie and TV Enthusiasts 1.61   |
-|  Sep-18  |   Action    |   Movie and TV Enthusiasts 1.59   |
-|  Mar-19  |     The     |     Sims Video Game Fans 1.57     |
+|  Dec-18  |    Work Comes First Travelers      |    21.2     |
+|  Jul-18  |     Gym Equipment Owners     |      18.82       |
+|  Jul-18  |  Furniture Shoppers  |           17.44           |
+|  Jul-18  |   Luxury Retail Shoppers   |        17.19       |
+|  Oct-18  |   Luxury Boutique Hotel Researchers  | 15.15   |
+|  Dec-18  |   Luxury Bedding Shoppers   |       15.05       |
+|  Jul-18  |    Shoe  Shoppers   |           14.91           |
+|  Jul-18  |  Cosmetics and Beauty Shoppers |      14.23     |
+|  Jul-18  |   Luxury  Hotel Guests   |         14.1         |
+|  Jul-18  |   Luxury  Retail Researchers  |      13.97      |
+|  Jul-18  |   Readers of Jamaican Content  |      1.86      |
+|  Feb-19  | Automotive News Readers |          1.84         |
+|  Jul-18  |   Comedy Fans   |              1.83             |
+|  Aug-19  |    World  of Warcraft Enthusiasts  |    1.82    |
+|  Aug-18  |    Miami  Heat Fans   |          1.81           |
+|  Jul-18  |   Online Role Playing Game Enthusiasts   | 1.73 |
+|  Aug-19  | Hearthstone Video Game Fans  |       1.66        |
+|  Sep-18  |    Scifi  Movie and TV Enthusiasts  |    1.61   |
+|  Sep-18  |   Action  Movie and TV Enthusiasts  |    1.59   |
+|  Mar-19  |     The   Sims Video Game Fans  |      1.57     |
 
 
 2. Which 5 interests had the lowest average ranking value?
@@ -478,11 +478,11 @@ LIMIT
 
 |interest_id|interest_name|        avg_ranking         |
 |-----------|-------------|----------------------------|
-|   41548   |   Winter    |     Apparel Shoppers 1     |
-|   42203   |   Fitness   |Activity Tracker Users 4.11 |
-|    115    |    Men's    |     Shoe Shoppers 5.93     |
-|   48154   |    Elite    | Cycling Gear Shoppers 7.8  |
-|    171    |    Shoe     |       Shoppers 9.36        |
+|   41548   |   Winter Apparel Shoppers   |      1     |
+|   42203   |   Fitness Activity Tracker Users   | 4.11 |
+|    115    |    Men's Shoe Shoppers   |      5.93     |
+|   48154   |    Elite   Cycling Gear Shoppers |  7.8  |
+|    171    |    Shoe   Shoppers  |        9.36        |
 
 
 3. Which 5 interests had the largest standard deviation in their percentile_ranking value?
@@ -502,12 +502,11 @@ LIMIT
 
 |interest_id|interest_name|       std_percentile_ranking        |
 |-----------|-------------|-------------------------------------|
-|   6260    | Blockbuster |       Movie Fans 41.27382282        |
-|    131    |   Android   |          Fans 30.72076789           |
-|    150    |     TV      |         Junkies 30.36397487         |
+|   6260    | Blockbuster Movie Fans |        41.27382282        |
+|    131    |   Android Fans  |           30.72076789           |
+|    150    |     TV   Junkies   |          30.36397487         |
 |    23     |   Techies   |             30.17504709             |
-|   20764   |Entertainment|Industry Decision Makers 28.97491996 |
-
+|   20764   |Entertainment Industry Decision Makers | 28.97491996 |
 
 
 4. For the 5 interests found in the previous question - what was minimum and maximum percentile_ranking values for each interest and its corresponding year_month value? Can you describe what is happening for these 5 interests?
