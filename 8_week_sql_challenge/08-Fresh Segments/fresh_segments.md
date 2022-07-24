@@ -581,12 +581,267 @@ The index_value is a measure which can be used to reverse calculate the average 
 
 Average composition can be calculated by dividing the composition column by the index_value column rounded to 2 decimal places.
 
-1. What is the top 10 interests by the average composition for each month?
+1. What are the top 10 interests by the average composition for each month?
+
+```sql
+WITH cte_avg_comp AS (
+  SELECT
+    interest_id,
+    interest_name,
+    month_year,
+    ROUND(composition :: NUMERIC / index_value :: NUMERIC, 2) AS avg_composition,
+    RANK() OVER(
+      PARTITION BY month_year
+      ORDER BY
+        composition :: NUMERIC / index_value :: NUMERIC DESC
+    ) AS avg_composition_rank
+  FROM
+    fresh_segments.interest_metrics AS metrics
+    JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+  WHERE
+    month_year IS NOT NULL
+)
+SELECT
+  *
+FROM
+  cte_avg_comp
+WHERE
+  avg_composition_rank <= 10
+ORDER BY
+ month_year, avg_composition_rank;
+```
+
+- showing only the first couple of rows as there are 140
+
+|interest_id|interest_name                         |month_year|avg_composition|avg_composition_rank|
+|-----------|--------------------------------------|----------|---------------|--------------------|
+|6324       |Las Vegas Trip Planners               |2018-07-01T00:00:00.000Z|7.36           |1                   |
+|6284       |Gym Equipment Owners                  |2018-07-01T00:00:00.000Z|6.94           |2                   |
+|4898       |Cosmetics and Beauty Shoppers         |2018-07-01T00:00:00.000Z|6.78           |3                   |
+|77         |Luxury Retail Shoppers                |2018-07-01T00:00:00.000Z|6.61           |4                   |
+|39         |Furniture Shoppers                    |2018-07-01T00:00:00.000Z|6.51           |5                   |
+|18619      |Asian Food Enthusiasts                |2018-07-01T00:00:00.000Z|6.1            |6                   |
+|6208       |Recently Retired Individuals          |2018-07-01T00:00:00.000Z|5.72           |7                   |
+|21060      |Family Adventures Travelers           |2018-07-01T00:00:00.000Z|4.85           |8                   |
+|21057      |Work Comes First Travelers            |2018-07-01T00:00:00.000Z|4.8            |9                   |
+|82         |HDTV Researchers                      |2018-07-01T00:00:00.000Z|4.71           |10                  |
+|6324       |Las Vegas Trip Planners               |2018-08-01T00:00:00.000Z|7.21           |1                   |
+|6284       |Gym Equipment Owners                  |2018-08-01T00:00:00.000Z|6.62           |2                   |
+|77         |Luxury Retail Shoppers                |2018-08-01T00:00:00.000Z|6.53           |3                   |
+|39         |Furniture Shoppers                    |2018-08-01T00:00:00.000Z|6.3            |4                   |
+|4898       |Cosmetics and Beauty Shoppers         |2018-08-01T00:00:00.000Z|6.28           |5                   |
+|21057      |Work Comes First Travelers            |2018-08-01T00:00:00.000Z|5.7            |6                   |
+|18619      |Asian Food Enthusiasts                |2018-08-01T00:00:00.000Z|5.68           |7                   |
+|6208       |Recently Retired Individuals          |2018-08-01T00:00:00.000Z|5.58           |8                   |
+|7541       |Alabama Trip Planners                 |2018-08-01T00:00:00.000Z|4.83           |9                   |
+
 
 2. For all of these top 10 interests - which interest appears the most often?
 
+```sql
+WITH cte_avg_comp AS (
+  SELECT
+    interest_id,
+    interest_name,
+    month_year,
+    ROUND(
+      composition :: NUMERIC / index_value :: NUMERIC,
+      2
+    ) AS avg_composition,
+    RANK() OVER(
+      PARTITION BY month_year
+      ORDER BY
+        composition :: NUMERIC / index_value :: NUMERIC DESC
+    ) AS avg_composition_rank
+  FROM
+    fresh_segments.interest_metrics AS metrics
+    JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+  WHERE
+    month_year IS NOT NULL
+),
+top_10_avg_comp AS (
+  SELECT
+    *
+  FROM
+    cte_avg_comp
+  WHERE
+    avg_composition_rank <= 10
+)
+SELECT
+  interest_id,
+  interest_name,
+  COUNT(*) AS count_apperance_monthly_top_10
+FROM
+  top_10_avg_comp
+GROUP BY
+  interest_id,
+  interest_name
+ORDER BY
+  count_apperance_monthly_top_10 DESC;
+```
+
+|interest_id|interest_name                         |count_apperance_monthly_top_10|
+|-----------|--------------------------------------|------------------------------|
+|6065       |Solar Energy Researchers              |10                            |
+|7541       |Alabama Trip Planners                 |10                            |
+|5969       |Luxury Bedding Shoppers               |10                            |
+|21245      |Readers of Honduran Content           |9                             |
+|18783      |Nursing and Physicians Assistant Journal Researchers|9                             |
+|10981      |New Years Eve Party Ticket Purchasers |9                             |
+|34         |Teen Girl Clothing Shoppers           |8                             |
+|21057      |Work Comes First Travelers            |8                             |
+|10977      |Christmas Celebration Researchers     |7                             |
+|4898       |Cosmetics and Beauty Shoppers         |5                             |
+|6284       |Gym Equipment Owners                  |5                             |
+|39         |Furniture Shoppers                    |5                             |
+|6208       |Recently Retired Individuals          |5                             |
+|77         |Luxury Retail Shoppers                |5                             |
+|6324       |Las Vegas Trip Planners               |5                             |
+|18619      |Asian Food Enthusiasts                |5                             |
+|15878      |Readers of Catholic News              |4                             |
+|19620      |PlayStation Enthusiasts               |4                             |
+|6253       |Medicare Researchers                  |3                             |
+|13497      |Restaurant Supply Shoppers            |3                             |
+|7535       |Medicare Provider Researchers         |2                             |
+|82         |HDTV Researchers                      |1                             |
+|21237      |Chelsea Fans                          |1                             |
+|21060      |Family Adventures Travelers           |1                             |
+|2          |Gamers                                |1                             |
+|107        |Cruise Travel Intenders               |1                             |
+|12133      |Luxury Boutique Hotel Researchers     |1                             |
+|4931       |Marijuana Legalization Advocates      |1                             |
+|7536       |Medicare Price Shoppers               |1                             |
+|15884      |Video Gamers                          |1                             |
+
 3. What is the average of the average composition for the top 10 interests for each month?
 
-4. What is the 3 month rolling average of the max average composition value from September 2018 to August 2019 and include the previous top ranking interests in the same output shown below.
+```sql
+WITH cte_avg_comp AS (
+  SELECT
+    interest_id,
+    interest_name,
+    month_year,
+    ROUND(
+      composition :: NUMERIC / index_value :: NUMERIC,
+      2
+    ) AS avg_composition,
+    RANK() OVER(
+      PARTITION BY month_year
+      ORDER BY
+        composition :: NUMERIC / index_value :: NUMERIC DESC
+    ) AS avg_composition_rank
+  FROM
+    fresh_segments.interest_metrics AS metrics
+    JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+  WHERE
+    month_year IS NOT NULL
+),
+top_10_avg_comp AS (
+  SELECT
+    *
+  FROM
+    cte_avg_comp
+  WHERE
+    avg_composition_rank <= 10
+)
+SELECT
+month_year,
+  ROUND(AVG(avg_composition),2) AS avg_avg_composition
+FROM
+  top_10_avg_comp
+GROUP BY
+  month_year
+ORDER BY month_year;
+```
 
-5. Provide a possible reason why the max average composition might change from month to month? Could it signal something is not quite right with the overall business model for Fresh Segments?
+|       month_year       |avg_avg_composition |
+|------------------------|--------------------|
+|2018-07-01T00:00:00.000Z|        6.04        |
+|2018-08-01T00:00:00.000Z|        5.95        |
+|2018-09-01T00:00:00.000Z|        6.9         |
+|2018-10-01T00:00:00.000Z|        7.07        |
+|2018-11-01T00:00:00.000Z|        6.62        |
+|2018-12-01T00:00:00.000Z|        6.65        |
+|2019-01-01T00:00:00.000Z|        6.4         |
+|2019-02-01T00:00:00.000Z|        6.58        |
+|2019-03-01T00:00:00.000Z|        6.17        |
+|2019-04-01T00:00:00.000Z|        5.75        |
+|2019-05-01T00:00:00.000Z|        3.54        |
+|2019-06-01T00:00:00.000Z|        2.43        |
+|2019-07-01T00:00:00.000Z|        2.77        |
+|2019-08-01T00:00:00.000Z|        2.63        |
+
+
+
+4. What is the 3 month rolling average of the max average composition value from September 2018 to August 2019 and include the previous 2 top ranking interests and their composition in the same output.
+
+```sql
+WITH cte_avg_comp AS (
+  SELECT
+    interest_id,
+    interest_name,
+    month_year,
+    ROUND(
+      composition :: NUMERIC / index_value :: NUMERIC,
+      2
+    ) AS avg_composition,
+    RANK() OVER(
+      PARTITION BY month_year
+      ORDER BY
+        composition :: NUMERIC / index_value :: NUMERIC DESC
+    ) AS avg_composition_rank
+  FROM
+    fresh_segments.interest_metrics AS metrics
+    JOIN fresh_segments.interest_map AS map ON map.id = metrics.interest_id
+  WHERE
+    month_year IS NOT NULL
+),
+final_output AS (
+  SELECT
+    month_year,
+    interest_id,
+    interest_name,
+    avg_composition AS max_avg_composition,
+    ROUND(
+      AVG(avg_composition) OVER(
+        ORDER BY
+          month_year ROWS BETWEEN 2 PRECEDING
+          AND CURRENT ROW
+      ),
+      2
+    ) AS "3_month_moving_avg",
+    LAG(interest_name || ': ' || avg_composition, 1) OVER(
+      ORDER BY
+        month_year
+    ) AS one_month_prior,
+    LAG(interest_name || ': ' || avg_composition, 2) OVER(
+      ORDER BY
+        month_year
+    ) AS two_months_prior
+  FROM
+    cte_avg_comp
+  WHERE
+    avg_composition_rank = 1
+)
+SELECT
+  *
+FROM
+  final_output
+WHERE
+  two_months_prior IS NOT NULL;
+```
+|month_year|interest_id                           |interest_name|max_avg_composition|3_month_moving_avg|one_month_prior                  |two_months_prior                 |
+|----------|--------------------------------------|-------------|-------------------|------------------|---------------------------------|---------------------------------|
+|2018-09-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|8.26               |7.61              |Las Vegas Trip Planners: 7.21    |Las Vegas Trip Planners: 7.36    |
+|2018-10-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|9.14               |8.2               |Work Comes First Travelers: 8.26 |Las Vegas Trip Planners: 7.21    |
+|2018-11-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|8.28               |8.56              |Work Comes First Travelers: 9.14 |Work Comes First Travelers: 8.26 |
+|2018-12-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|8.31               |8.58              |Work Comes First Travelers: 8.28 |Work Comes First Travelers: 9.14 |
+|2019-01-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|7.66               |8.08              |Work Comes First Travelers: 8.31 |Work Comes First Travelers: 8.28 |
+|2019-02-01T00:00:00.000Z|21057                                 |Work Comes First Travelers|7.66               |7.88              |Work Comes First Travelers: 7.66 |Work Comes First Travelers: 8.31 |
+|2019-03-01T00:00:00.000Z|7541                                  |Alabama Trip Planners|6.54               |7.29              |Work Comes First Travelers: 7.66 |Work Comes First Travelers: 7.66 |
+|2019-04-01T00:00:00.000Z|6065                                  |Solar Energy Researchers|6.28               |6.83              |Alabama Trip Planners: 6.54      |Work Comes First Travelers: 7.66 |
+|2019-05-01T00:00:00.000Z|21245                                 |Readers of Honduran Content|4.41               |5.74              |Solar Energy Researchers: 6.28   |Alabama Trip Planners: 6.54      |
+|2019-06-01T00:00:00.000Z|6324                                  |Las Vegas Trip Planners|2.77               |4.49              |Readers of Honduran Content: 4.41|Solar Energy Researchers: 6.28   |
+|2019-07-01T00:00:00.000Z|6324                                  |Las Vegas Trip Planners|2.82               |3.33              |Las Vegas Trip Planners: 2.77    |Readers of Honduran Content: 4.41|
+|2019-08-01T00:00:00.000Z|4898                                  |Cosmetics and Beauty Shoppers|2.73               |2.77              |Las Vegas Trip Planners: 2.82    |Las Vegas Trip Planners: 2.77    |
+
